@@ -159,12 +159,30 @@ CHAMELEON_PRINT_START
 
 ---
 
-## 📄 Licença
+## ☕ Apoie o Projeto
 
-MIT License — sinta-se livre para usar, modificar e compartilhar.
+Se este projeto te ajudou, considere fazer uma doação para apoiar o desenvolvimento!
+
+**PIX — Mercado Pago**
+```
+(47) 99678-1505
+Luan Euclides Correia
+```
 
 ---
 
 ## 🙏 Créditos
 
+**Luan Euclides Correia** — Criador do projeto, desenvolvimento do hardware, montagem, testes e validação em produção.
+
+*Firmware, macros e bridge desenvolvidos com assistência do [Claude](https://claude.ai) (Anthropic).*
+
 Baseado no projeto [3D Chameleon Mk4](https://www.3dchameleon.com/) adaptado para Creality K1 Max com Klipper/Moonraker.
+
+---
+
+## 📄 Licença
+
+MIT License — Copyright (c) 2026 Luan Euclides Correia
+
+Veja o arquivo [LICENSE](LICENSE) para detalhes completos.
