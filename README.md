@@ -8,16 +8,32 @@ Controlado por um Raspberry Pi Pico com dois drivers TMC2209, sensores NC e comu
 
 ## 📋 Lista de Materiais
 
-| Qtd | Componente | Modelo |
-|-----|-----------|--------|
+| Qtd | Componente | Modelo / Especificação |
+|-----|-----------|----------------------|
 | 10 | Sensor de filamento | KW2B (micro switch NC) |
 | 2  | Driver de motor | A4988 / TMC2209 / TMC2208 Standalone |
 | 2  | Shield Step Driver | Placa de expansão para driver |
 | 1  | Microcontrolador | Raspberry Pi Pico (RP2040) |
 | 10 | Esfera de aço | 4mm de diâmetro |
 | 2  | Motor de passo | Nema 17 |
+| 1  | Tubo PTFE | 1 metro — conexão entre gates e hotend |
+| 4  | Parafuso M3 x 34.5mm | Fuso — fixação do Chameleon na base |
+| 2  | Parafuso M3 x 12mm | Fixação do Hub 4x1 |
 
 > O switch hotend original da K1 Max é transferido da placa da impressora para o GPIO9 do Pico.
+
+---
+
+## 🖨️ Peças Impressas em 3D
+
+Peças customizadas desenvolvidas para facilitar a montagem:
+
+| Peça | Descrição |
+|------|-----------|
+| Suporte do rolamento (modificado) | Alteração na estrutura original do Chameleon que facilita a inserção do filamento |
+| Suporte dos sensores | Suporte para fixar os sensores KW2B no Chameleon |
+
+> Arquivos STL disponíveis em breve neste repositório.
 
 ---
 
@@ -186,3 +202,5 @@ Baseado no projeto [3D Chameleon Mk4](https://www.3dchameleon.com/) adaptado par
 MIT License — Copyright (c) 2026 Luan Euclides Correia
 
 Veja o arquivo [LICENSE](LICENSE) para detalhes completos.
+
+
