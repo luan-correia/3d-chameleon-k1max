@@ -1,6 +1,6 @@
 # 3D Chameleon Mk4 — Creality K1 Max
-(pode ser usado em qualquer impressora com KLIPPER)
-*alteração ser feito para outras impressora alterar posição de corte e purga
+
+funciona em qualquer impressora com KLIPPER, precisa alterar posição do corte e purga no arquivo (chameleon_macros.cfg)
 
 Sistema de troca automática de filamento multi-material para Creality K1 Max rodando Klipper/Moonraker.
 
@@ -30,12 +30,13 @@ Controlado por um Raspberry Pi Pico com dois drivers TMC2209, sensores NC e comu
 
 Peças customizadas desenvolvidas para facilitar a montagem:
 
-| Peça | Descrição |
-|------|-----------|
-| Suporte do rolamento (modificado) | Alteração na estrutura original do Chameleon que facilita a inserção do filamento |
-| Suporte dos sensores | Suporte para fixar os sensores KW2B no Chameleon |
+| Peça | Descrição | Link |
+|------|-----------|------|
+| Suporte do rolamento (modificado) | Alteração na estrutura original do Chameleon que facilita a inserção do filamento | Em breve |
+| Suporte dos sensores | Suporte para fixar os sensores KW2B no Chameleon | Em breve |
+| TurtleNeck Buffer | Buffer de filamento usado neste projeto — projeto open source da ArmoredTurtle | [GitHub](https://github.com/ArmoredTurtle/TurtleNeck) |
 
-> Arquivos STL disponíveis em breve neste repositório.
+> Arquivos STL customizados disponíveis em breve neste repositório.
 
 ---
 
@@ -197,6 +198,8 @@ Luan Euclides Correia
 
 Baseado no projeto [3D Chameleon Mk4](https://www.3dchameleon.com/) adaptado para Creality K1 Max com Klipper/Moonraker.
 
+Buffer de filamento: [TurtleNeck](https://github.com/ArmoredTurtle/TurtleNeck) by ArmoredTurtle.
+
 ---
 
 ## 📄 Licença
@@ -204,5 +207,3 @@ Baseado no projeto [3D Chameleon Mk4](https://www.3dchameleon.com/) adaptado par
 MIT License — Copyright (c) 2026 Luan Euclides Correia
 
 Veja o arquivo [LICENSE](LICENSE) para detalhes completos.
-
-
