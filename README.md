@@ -1,10 +1,23 @@
 # 3D Chameleon Mk4 — Creality K1 Max
 
-funciona em qualquer impressora com KLIPPER, precisa alterar posição do corte e purga no arquivo (chameleon_macros.cfg)
-
 Sistema de troca automática de filamento multi-material para Creality K1 Max rodando Klipper/Moonraker.
 
 Controlado por um Raspberry Pi Pico com dois drivers TMC2209, sensores NC e comunicação via USB Serial.
+
+---
+
+## 🖨️ Compatibilidade
+
+Este projeto foi desenvolvido para a **Creality K1 Max** mas pode ser adaptado para **qualquer impressora rodando Klipper**.
+
+Para usar em outra impressora basta ajustar dois macros no `chameleon_macros.cfg`:
+
+| Macro | O que ajustar |
+|-------|--------------|
+| `Fil_Cut` | Posição do cortador de filamento (`X Y`) e movimentos de corte |
+| `Purga` | Posição de purga (`X Y Z`) e movimentos de limpeza do bico |
+
+Todo o restante do sistema — Pico, bridge, sensores e lógica de troca — funciona sem modificações.
 
 ---
 
@@ -32,6 +45,7 @@ Peças customizadas desenvolvidas para facilitar a montagem:
 
 | Peça | Descrição | Link |
 |------|-----------|------|
+| K1 Sugar Skull Extruder with Filament Cutter | Extrusora com cortador de filamento para série K1 — necessária para o sistema de corte funcionar | [Printables](https://www.printables.com/model/1293244-k1-sugar-skull-extruder-with-filament-cutter) |
 | Suporte do rolamento (modificado) | Alteração na estrutura original do Chameleon que facilita a inserção do filamento | Em breve |
 | Suporte dos sensores | Suporte para fixar os sensores KW2B no Chameleon | Em breve |
 | TurtleNeck Buffer | Buffer de filamento usado neste projeto — projeto open source da ArmoredTurtle | [GitHub](https://github.com/ArmoredTurtle/TurtleNeck) |
@@ -207,3 +221,4 @@ Buffer de filamento: [TurtleNeck](https://github.com/ArmoredTurtle/TurtleNeck) b
 MIT License — Copyright (c) 2026 Luan Euclides Correia
 
 Veja o arquivo [LICENSE](LICENSE) para detalhes completos.
+
