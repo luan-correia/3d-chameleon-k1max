@@ -1,4 +1,6 @@
 # 3D Chameleon Mk4 — Creality K1 Max
+(pode ser usado em qualquer impressora com KLIPPER)
+*alteração ser feito para outras impressora alterar posição de corte e purga
 
 Sistema de troca automática de filamento multi-material para Creality K1 Max rodando Klipper/Moonraker.
 
