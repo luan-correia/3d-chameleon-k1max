@@ -1,5 +1,4 @@
 # 3D Chameleon Mk4 — Creality K1 Max
-https://youtube.com/shorts/27tbmVNVsXQ?si=WaRF7g0dzl1QR7HX
 
 Sistema de troca automática de filamento multi-material para Creality K1 Max rodando Klipper/Moonraker.
 
@@ -32,9 +31,12 @@ Todo o restante do sistema — Pico, bridge, sensores e lógica de troca — fun
 | 1  | Microcontrolador | Raspberry Pi Pico (RP2040) |
 | 10 | Esfera de aço | 4mm de diâmetro |
 | 2  | Motor de passo | Nema 17 |
-| 1  | Tubo PTFE | 1 metro — conexão entre gates e hotend |
+| 1  | Regulador Step Down | Mini360 / LM2596 — entrada 12V saída 5V — alimentação dos drivers |
 | 4  | Parafuso M3 x 34.5mm | Fuso — fixação do Chameleon na base |
+| 1  | Parafuso M3 x 34.5mm | Fixação do home do seletor |
 | 2  | Parafuso M3 x 12mm | Fixação do Hub 4x1 |
+| 1  | Tubo PTFE | 1 metro — conexão entre hub e hotend |
+| 4  | Tubo PTFE x 75.05mm | Conexão do Hub 4x1 ao Chameleon |
 
 > O switch hotend original da K1 Max é transferido da placa da impressora para o GPIO9 do Pico.
 
@@ -47,11 +49,11 @@ Peças customizadas desenvolvidas para facilitar a montagem:
 | Peça | Descrição | Link |
 |------|-----------|------|
 | K1 Sugar Skull Extruder with Filament Cutter | Extrusora com cortador de filamento para série K1 — necessária para o sistema de corte funcionar | [Printables](https://www.printables.com/model/1293244-k1-sugar-skull-extruder-with-filament-cutter) |
-| Suporte do rolamento (modificado) | Alteração na estrutura original do Chameleon que facilita a inserção do filamento | Em breve |
-| Suporte dos sensores | Suporte para fixar os sensores KW2B no Chameleon | Em breve |
+| Suporte do rolamento (modificado) | Alteração na estrutura original do Chameleon que facilita a inserção do filamento | [Printables](https://www.printables.com/model/1632259-atualizacao-para-3d-chamaleon) |
+| Suporte dos sensores | Suporte para fixar os sensores KW2B no Chameleon | [Printables](https://www.printables.com/model/1632259-atualizacao-para-3d-chamaleon) |
 | TurtleNeck Buffer | Buffer de filamento usado neste projeto — projeto open source da ArmoredTurtle | [GitHub](https://github.com/ArmoredTurtle/TurtleNeck) |
 
-> Arquivos STL customizados disponíveis em breve neste repositório.
+> Arquivos STL customizados disponíveis no [Printables](https://www.printables.com/model/1632259-atualizacao-para-3d-chamaleon).
 
 ---
 
@@ -222,4 +224,3 @@ Buffer de filamento: [TurtleNeck](https://github.com/ArmoredTurtle/TurtleNeck) b
 MIT License — Copyright (c) 2026 Luan Euclides Correia
 
 Veja o arquivo [LICENSE](LICENSE) para detalhes completos.
-
