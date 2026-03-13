@@ -29,11 +29,13 @@ Todo o restante do sistema — Pico, bridge, sensores e lógica de troca — fun
 | 2  | Driver de motor | A4988 / TMC2209 / TMC2208 Standalone |
 | 2  | Shield Step Driver | Placa de expansão para driver |
 | 1  | Microcontrolador | Raspberry Pi Pico (RP2040) |
+| 1  | Display OLED | SSD1306 128x64 I2C |
+| 1  | Encoder rotativo | KY-040 |
 | 10 | Esfera de aço | 4mm de diâmetro |
 | 2  | Motor de passo | Nema 17 |
 | 1  | Regulador Step Down | Mini360 / LM2596 — entrada 12V saída 5V — alimentação dos drivers |
 | 4  | Parafuso M3 x 34.5mm | Fuso — fixação do Chameleon na base |
-| 1  | Parafuso M3 x 15mm | Fixação do home do seletor |
+| 1  | Parafuso M3 x 34.5mm | Fixação do home do seletor |
 | 2  | Parafuso M3 x 12mm | Fixação do Hub 4x1 |
 | 3  | Inserto metálico M3 x 4mm | Para fixação nas peças impressas em 3D |
 | 1  | Tubo PTFE | 1 metro — conexão entre hub e hotend |
@@ -60,14 +62,16 @@ Peças customizadas desenvolvidas para facilitar a montagem:
 
 ## 🔌 Pinout — Raspberry Pi Pico
 
+### Sensores e Motores
+
 | GPIO | Pino Físico | Função | Lógica |
 |------|------------|--------|--------|
 | GPIO 0  | Pino 1  | Sensor Entrada T0 (NC) | HIGH=presente / LOW=vazio |
 | GPIO 1  | Pino 2  | Sensor Entrada T1 (NC) | HIGH=presente / LOW=vazio |
 | GPIO 2  | Pino 4  | Sensor Entrada T2 (NC) | HIGH=presente / LOW=vazio |
 | GPIO 3  | Pino 5  | Sensor Entrada T3 (NC) | HIGH=presente / LOW=vazio |
-| GPIO 8  | Pino 11 | Endstop Seletor (NO)   | LOW=endstop acionado |
-| GPIO 9  | Pino 12 | Sensor Hotend K1 (NO)  | HIGH=filamento presente |
+| GPIO 8  | Pino 11 | Endstop Seletor (NC)   | LOW=endstop acionado |
+| GPIO 9  | Pino 12 | Sensor Hotend K1 (NC)  | HIGH=filamento presente |
 | GPIO 10 | Pino 14 | Buffer Vazio (NC)       | HIGH=buffer vazio |
 | GPIO 11 | Pino 15 | Buffer Cheio (NC)       | HIGH=buffer cheio |
 | GPIO 12 | Pino 16 | Sensor Saída Único (NC) | LOW=filamento saiu — compartilhado T0-T3 |
@@ -80,13 +84,59 @@ Peças customizadas desenvolvidas para facilitar a montagem:
 | 3.3V    | Pino 36 | VCC Sensores            | Alimentação sensores |
 | GND     | Pino 38 | GND Comum               | Referência |
 
+### Painel — Display SSD1306 + Encoder KY-040
+
+| GPIO | Pino Físico | Função | Observação |
+|------|------------|--------|------------|
+| GPIO 4  | Pino 6  | SSD1306 SDA | I2C Data |
+| GPIO 5  | Pino 7  | SSD1306 SCL | I2C Clock |
+| GPIO 6  | Pino 9  | Encoder CLK | Interrupção CHANGE |
+| GPIO 7  | Pino 10 | Encoder DT  | Leitura de direção |
+| GPIO 13 | Pino 17 | Encoder SW  | Botão — interrupção FALLING |
+| 3.3V    | Pino 36 | VCC Display + Encoder | Máx ~80mA — dentro do limite de 300mA |
+| GND     | Pino 38 | GND Comum   | |
+
+> ⚠️ O encoder KY-040 deve ser alimentado com **3.3V** (pino 36), **não 5V**.
+
+---
+
+## 🖥️ Painel de Controle
+
+O firmware inclui um painel físico com display OLED SSD1306 128x64 e encoder rotativo KY-040, permitindo operar o Chameleon sem precisar do Klipper.
+
+### Tela Principal
+Exibe o status em tempo real:
+- Tool ativa (T0–T3) destacada no header
+- Grade 2x2 com T0–T3 mostrando presença de filamento (ON/OFF) e círculo indicador
+- Atualização automática a cada 500ms
+
+### Menu (pressionar o botão do encoder)
+Navegar girando o encoder, confirmar pressionando:
+
+| Item | Comando enviado | Descrição |
+|------|----------------|-----------|
+| TS0  | `T0` | Move seletor para gate 0 |
+| TS1  | `T1` | Move seletor para gate 1 |
+| TS2  | `T2` | Move seletor para gate 2 |
+| TS3  | `T3` | Move seletor para gate 3 |
+| LOAD | `LOAD` | Carrega filamento até hotend |
+| UNLOAD | `UNLOAD` | Descarrega filamento |
+| HOME | `HOME` | Faz homing do seletor |
+| START | `START_PRINT` | Ativa monitoramento do buffer |
+| STOP  | `STOP_PRINT`  | Desativa monitoramento do buffer |
+| < VOLTAR | — | Volta para tela principal |
+
+### Bibliotecas necessárias (Arduino IDE)
+- `Adafruit SSD1306`
+- `Adafruit GFX Library`
+
 ---
 
 ## 📁 Arquivos
 
 | Arquivo | Descrição |
 |---------|-----------|
-| `chameleon_pico.ino` | Firmware do Raspberry Pi Pico — controle dos motores e sensores |
+| `chameleon_pico.ino` | Firmware do Raspberry Pi Pico — controle dos motores, sensores e painel |
 | `chameleon_bridge.py` | Bridge Python — comunicação serial entre Klipper e Pico |
 | `chameleon_macros.cfg` | Macros Klipper — sequências de troca, purga e monitoramento |
 
@@ -98,6 +148,7 @@ Peças customizadas desenvolvidas para facilitar a montagem:
 
 - Instale o [Arduino IDE](https://www.arduino.cc/en/software)
 - Adicione o suporte ao Raspberry Pi Pico: `https://github.com/earlephilhower/arduino-pico`
+- Instale as bibliotecas: **Adafruit SSD1306** e **Adafruit GFX Library**
 - Abra `chameleon_pico.ino` e faça upload para o Pico
 
 ### 2. Arquivos na K1 Max
@@ -199,6 +250,9 @@ CHAMELEON_PRINT_START
 ## ☕ Apoie o Projeto
 
 Se este projeto te ajudou, considere fazer uma doação para apoiar o desenvolvimento!
+
+#PAYPAL
+(luan.lec94@gmail.com)
 
 **PIX — Mercado Pago**
 ```
