@@ -66,8 +66,8 @@ Peças customizadas desenvolvidas para facilitar a montagem:
 | GPIO 1  | Pino 2  | Sensor Entrada T1 (NC) | HIGH=presente / LOW=vazio |
 | GPIO 2  | Pino 4  | Sensor Entrada T2 (NC) | HIGH=presente / LOW=vazio |
 | GPIO 3  | Pino 5  | Sensor Entrada T3 (NC) | HIGH=presente / LOW=vazio |
-| GPIO 8  | Pino 11 | Endstop Seletor (NC)   | LOW=endstop acionado |
-| GPIO 9  | Pino 12 | Sensor Hotend K1 (NC)  | HIGH=filamento presente |
+| GPIO 8  | Pino 11 | Endstop Seletor (NO)   | LOW=endstop acionado |
+| GPIO 9  | Pino 12 | Sensor Hotend K1 (NO)  | HIGH=filamento presente |
 | GPIO 10 | Pino 14 | Buffer Vazio (NC)       | HIGH=buffer vazio |
 | GPIO 11 | Pino 15 | Buffer Cheio (NC)       | HIGH=buffer cheio |
 | GPIO 12 | Pino 16 | Sensor Saída Único (NC) | LOW=filamento saiu — compartilhado T0-T3 |
