@@ -526,7 +526,7 @@ void unloadAteSensor(int tool) {
   digitalWrite(EXT_DIR, direcaoUnload(tool));
 
   long steps    = 0;
-  long maxSteps = (long)(2000.0 * STEPS_PER_MM);
+  long maxSteps = (long)(4000.0 * STEPS_PER_MM);
   bool ok       = false;
 
   // Retrai até sensor saida GPIO12 detectar que filamento saiu (LOW)
@@ -595,7 +595,7 @@ void loadContinuo(int tool) {
   digitalWrite(EXT_DIR, direcaoLoad(tool));
 
   long steps    = 0;
-  long maxSteps = (long)(2000.0 * STEPS_PER_MM);
+  long maxSteps = (long)(4000.0 * STEPS_PER_MM);
   bool ok       = false;
 
   while (steps < maxSteps) {
@@ -655,7 +655,7 @@ void loadAteSensorHotend(int tool, float extraMM) {
   digitalWrite(EXT_DIR, direcaoLoad(tool));
 
   long steps    = 0;
-  long maxSteps = (long)(2000.0 * STEPS_PER_MM);
+  long maxSteps = (long)(4000.0 * STEPS_PER_MM);
   bool ok       = false;
 
   while (steps < maxSteps) {
