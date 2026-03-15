@@ -35,7 +35,7 @@ Todo o restante do sistema — Pico, bridge, sensores e lógica de troca — fun
 | 2  | Motor de passo | Nema 17 |
 | 1  | Regulador Step Down | Mini360 / LM2596 — entrada 12V saída 5V — alimentação dos drivers |
 | 4  | Parafuso M3 x 34.5mm | Fuso — fixação do Chameleon na base |
-| 1  | Parafuso M3 x 34.5mm | Fixação do home do seletor |
+| 1  | Parafuso M3 x 15.5mm | Fixação do home do seletor |
 | 2  | Parafuso M3 x 12mm | Fixação do Hub 4x1 |
 | 3  | Inserto metálico M3 x 4mm | Para fixação nas peças impressas em 3D |
 | 1  | Tubo PTFE | 1 metro — conexão entre hub e hotend |
