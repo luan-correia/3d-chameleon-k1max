@@ -147,7 +147,9 @@ const int   MICROSTEPS       = 16;
 const int   STEPS_PER_REV    = 200;
 const float STEPS_PER_MM     = 151.0;
 const int   SPEED_DELAY      = 170;    // µs — buffer normal
-const int   SPEED_DELAY_FAST = 28;     // µs — load/unload rápido
+const int   SPEED_DELAY_FAST = 28;     // µs — load/unload velocidade inicial
+const int   SPEED_DELAY_RAMP = 23;     // µs — load/unload após 60mm (+20%)
+const long  RAMP_STEPS       = (long)(60.0 * 151.0); // 60mm em passos = 9060
 const int   SEL_SPEED_DELAY  = 60;     // µs — seletor
 const int   DEFAULT_BACKOFF  = 5;      // passos recuo após home
 
@@ -566,12 +568,14 @@ void processarComando(String cmd) {
     imprimindo      = true;
     bufferDrainMode = false;
     Serial.println("Print started");
+    drawFeedback("PRINT ON");
     return;
   }
 
   if (cmd == "STOP_PRINT") {
     imprimindo = false;
     Serial.println("Print stopped");
+    drawFeedback("PRINT OFF");
     return;
   }
 
@@ -628,7 +632,7 @@ void rotateSelector(bool direction, int moveDistance) {
     digitalWrite(SEL_STEP, HIGH); delayMicroseconds(SEL_SPEED_DELAY);
     digitalWrite(SEL_STEP, LOW);  delayMicroseconds(SEL_SPEED_DELAY);
   }
-  digitalWrite(SEL_EN, HIGH);
+  // SEL_EN mantido LOW — motor travado na posicao
 }
 
 // ═══════════════════════════════════════════════════════
@@ -652,7 +656,7 @@ void homeSelector() {
 
   if (steps >= maxSteps) {
     Serial.println("ERRO: Endstop nao encontrado no home!");
-    digitalWrite(SEL_EN, HIGH);
+    // mantém travado mesmo em erro
     return;
   }
 
@@ -662,7 +666,7 @@ void homeSelector() {
     digitalWrite(SEL_STEP, LOW);  delayMicroseconds(SEL_SPEED_DELAY);
   }
 
-  digitalWrite(SEL_EN, HIGH);
+  // SEL_EN mantido LOW — motor travado na posicao home
   currentExtruder = 0;
   Serial.println("Home OK");
 }
@@ -801,7 +805,7 @@ void unloadAteSensor(int tool) {
   // Retrai até sensor saida GPIO12 detectar que filamento saiu (LOW)
   while (steps < maxSteps) {
     if (!filamentoPresente(SENSOR_SAIDA)) { ok = true; break; }
-    extStep(SPEED_DELAY_FAST);
+    extStep(steps < RAMP_STEPS ? SPEED_DELAY_FAST : SPEED_DELAY_RAMP);
     steps++;
   }
 
@@ -869,19 +873,22 @@ void loadContinuo(int tool) {
 
   while (steps < maxSteps) {
     if (filamentoPresente(SENSOR_HOTEND)) { ok = true; break; }
-    extStep(SPEED_DELAY_FAST);
+    extStep(steps < RAMP_STEPS ? SPEED_DELAY_FAST : SPEED_DELAY_RAMP);
     steps++;
   }
 
-  digitalWrite(EXT_EN, HIGH);
-
   if (ok) {
+    // Avanca 4mm apos sensor hotend acionar
+    long extra4mm = (long)(4.0 * STEPS_PER_MM);
+    for (long i = 0; i < extra4mm; i++) extStep(SPEED_DELAY_FAST);
+    digitalWrite(EXT_EN, HIGH);
     Serial.print("Load OK: ");
-    Serial.print((float)steps / STEPS_PER_MM);
+    Serial.print((float)(steps + extra4mm) / STEPS_PER_MM);
     Serial.println("mm");
     encherBuffer(tool);
     imprimindo = true;
   } else {
+    digitalWrite(EXT_EN, HIGH);
     Serial.println("ERRO: Load atingiu limite maximo sem sensor!");
   }
 }
@@ -929,7 +936,7 @@ void loadAteSensorHotend(int tool, float extraMM) {
 
   while (steps < maxSteps) {
     if (filamentoPresente(SENSOR_HOTEND)) { ok = true; break; }
-    extStep(SPEED_DELAY_FAST);
+    extStep(steps < RAMP_STEPS ? SPEED_DELAY_FAST : SPEED_DELAY_RAMP);
     steps++;
   }
 
