@@ -103,14 +103,16 @@ int  menuIdx = 0;
 
 const int   MENU_COUNT = 10;
 const char* menuLabels[MENU_COUNT] = {
+  "< VOLTAR",
   "TS0", "TS1", "TS2", "TS3",
   "LOAD", "UNLOAD", "HOME",
-  "START", "STOP", "< VOLTAR"
+  "START", "STOP"
 };
 const char* menuCmds[MENU_COUNT] = {
+  "",
   "T0", "T1", "T2", "T3",
-  "LOAD", "UNLOAD", "HOME",
-  "START_PRINT", "STOP_PRINT", ""
+  "LOAD_MANUAL", "UNLOAD", "HOME",
+  "START_PRINT", "STOP_PRINT"
 };
 
 // ── Sensores Entrada de Filamento (NC) ────────────────
@@ -304,12 +306,13 @@ void drawMenu() {
     display.print(menuLabels[realIdx]);
 
     display.setCursor(50, y);
-    if      (realIdx < 4)  display.print("Seletor");
-    else if (realIdx == 4) display.print("Carregar");
-    else if (realIdx == 5) display.print("Descarregar");
-    else if (realIdx == 6) display.print("Homing");
-    else if (realIdx == 7) display.print("Ini.print");
-    else if (realIdx == 8) display.print("Par.print");
+    if      (realIdx == 0) {} // VOLTAR sem descricao
+    else if (realIdx < 5)  display.print("Seletor");
+    else if (realIdx == 5) display.print("Carregar");
+    else if (realIdx == 6) display.print("Descarregar");
+    else if (realIdx == 7) display.print("Homing");
+    else if (realIdx == 8) display.print("Ini.print");
+    else if (realIdx == 9) display.print("Par.print");
 
     display.setTextColor(SSD1306_WHITE);
   }
@@ -366,7 +369,7 @@ void handleButton() {
     return;
   }
 
-  if (menuIdx == MENU_COUNT - 1) {
+  if (menuIdx == 0) {
     // < VOLTAR
     inMenu = false;
     drawHome();
@@ -557,6 +560,11 @@ void processarComando(String cmd) {
     return;
   }
 
+  if (cmd == "LOAD_MANUAL") {
+    loadManual(currentExtruder);
+    return;
+  }
+
   if (cmd.startsWith("LOAD ")) {
     float mm = cmd.substring(5).toFloat();
     if (mm <= 0) { Serial.println("ERRO: Distancia invalida"); return; }
@@ -574,6 +582,8 @@ void processarComando(String cmd) {
 
   if (cmd == "STOP_PRINT") {
     imprimindo = false;
+    digitalWrite(SEL_EN, HIGH);  // desativa seletor
+    digitalWrite(EXT_EN, HIGH);  // desativa alimentador
     Serial.println("Print stopped");
     drawFeedback("PRINT OFF");
     return;
@@ -666,7 +676,9 @@ void homeSelector() {
     digitalWrite(SEL_STEP, LOW);  delayMicroseconds(SEL_SPEED_DELAY);
   }
 
-  // SEL_EN mantido LOW — motor travado na posicao home
+  // Ambos motores ativos apos home — ficam assim ate STOP_PRINT
+  digitalWrite(SEL_EN, LOW);
+  digitalWrite(EXT_EN, LOW);
   currentExtruder = 0;
   Serial.println("Home OK");
 }
@@ -854,8 +866,13 @@ void unloadRetracao(int tool, float mm) {
 // Após Load OK ativa buffer automaticamente (imprimindo = true)
 // ═══════════════════════════════════════════════════════
 
-void loadContinuo(int tool) {
-  Serial.print("Load continuo T"); Serial.println(tool);
+// ═══════════════════════════════════════════════════════
+// LOAD MANUAL — usado pelo painel/display
+// Empurra até hotend + 4mm + enche buffer
+// ═══════════════════════════════════════════════════════
+
+void loadManual(int tool) {
+  Serial.print("Load manual T"); Serial.println(tool);
 
   if (filamentoPresente(SENSOR_HOTEND)) {
     Serial.println("Load OK: filamento ja presente");
@@ -878,13 +895,60 @@ void loadContinuo(int tool) {
   }
 
   if (ok) {
-    // Avanca 4mm apos sensor hotend acionar
     long extra4mm = (long)(4.0 * STEPS_PER_MM);
     for (long i = 0; i < extra4mm; i++) extStep(SPEED_DELAY_FAST);
     digitalWrite(EXT_EN, HIGH);
     Serial.print("Load OK: ");
     Serial.print((float)(steps + extra4mm) / STEPS_PER_MM);
     Serial.println("mm");
+    encherBuffer(tool);
+    imprimindo = true;
+  } else {
+    digitalWrite(EXT_EN, HIGH);
+    Serial.println("ERRO: Load atingiu limite maximo sem sensor!");
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// LOAD AUTOMATICO — usado pela troca via Klipper (LOAD)
+// Empurra rapido → sensor aciona → rampa 4mm desacelerando → 10mm F300 → encherBuffer
+// F300 = 5mm/s → ~1325µs por passo
+// ═══════════════════════════════════════════════════════
+
+void loadContinuo(int tool) {
+  Serial.print("Load auto T"); Serial.println(tool);
+
+  if (filamentoPresente(SENSOR_HOTEND)) {
+    Serial.println("Load OK: filamento ja presente");
+    encherBuffer(tool);
+    imprimindo = true;
+    return;
+  }
+
+  digitalWrite(EXT_EN, LOW);
+  digitalWrite(EXT_DIR, direcaoLoad(tool));
+
+  long steps    = 0;
+  long maxSteps = (long)(4000.0 * STEPS_PER_MM);
+  bool ok       = false;
+
+  while (steps < maxSteps) {
+    if (filamentoPresente(SENSOR_HOTEND)) { ok = true; break; }
+    extStep(steps < RAMP_STEPS ? SPEED_DELAY_FAST : SPEED_DELAY_RAMP);
+    steps++;
+  }
+
+  if (ok) {
+    // Confirma Load OK imediatamente — Klipper ja inicia purga G1 E120 F300
+    Serial.print("Load OK: ");
+    Serial.print((float)steps / STEPS_PER_MM);
+    Serial.println("mm");
+
+    // 10mm sincronizado com extrusora F300 (5mm/s = 1325µs/passo)
+    long sync10mm = (long)(10.0 * STEPS_PER_MM);
+    for (long i = 0; i < sync10mm; i++) extStep(1325);
+
+    digitalWrite(EXT_EN, HIGH);
     encherBuffer(tool);
     imprimindo = true;
   } else {
