@@ -17,7 +17,7 @@ import urllib.request
 import serial
 
 
-VERSION = "2026-05-27-pause-load-fail"
+VERSION = "2026-05-31-ensure-loaded-purge"
 SERIAL_PORT = os.environ.get("CHAMELEON_SERIAL_PORT", "/dev/ttyACM0")
 BAUD_RATE = int(os.environ.get("CHAMELEON_BAUD_RATE", "115200"))
 SERIAL_TIMEOUT = float(os.environ.get("CHAMELEON_SERIAL_TIMEOUT", "0.2"))
@@ -139,6 +139,91 @@ class ChameleonSerial:
         except Exception as exc:
             print(f"Falha ao enviar PAUSE ao Klipper: {exc}", flush=True)
 
+    def _send_serial_command_locked(self, command):
+        self.open()
+        self.serial.reset_input_buffer()
+        self.serial.write((command + "\n").encode("utf-8"))
+        self.serial.flush()
+        print(f">> Enviado: {command}", flush=True)
+
+        start_time = time.time()
+        lines = []
+        expected_done = done_keywords_for(command)
+
+        while time.time() - start_time < COMMAND_TIMEOUT:
+            line = self._read_line()
+            if not line:
+                continue
+
+            lines.append(line)
+            print(f"<< Pico: {line}", flush=True)
+            self._handle_async_line(line)
+
+            upper = line.upper()
+            for keyword in expected_done:
+                if keyword in upper:
+                    return {
+                        "ok": "ERRO" not in upper,
+                        "command": command,
+                        "lines": lines,
+                        "error": line if "ERRO" in upper else "",
+                    }
+
+        return {
+            "ok": False,
+            "command": command,
+            "lines": lines,
+            "error": f"TIMEOUT apos {COMMAND_TIMEOUT}s",
+        }
+
+    def ensure_loaded(self, command):
+        parts = command.split()
+        if len(parts) < 2 or not parts[1].isdigit():
+            return {"ok": False, "command": command, "lines": [], "error": "Uso: ENSURE_LOADED <tool>"}
+
+        tool = int(parts[1])
+        if tool < 0 or tool > 3:
+            return {"ok": False, "command": command, "lines": [], "error": "Tool invalida"}
+
+        with self.lock:
+            all_lines = []
+
+            select_result = self._send_serial_command_locked(f"T{tool}")
+            all_lines.extend(select_result.get("lines", []))
+            if not select_result["ok"]:
+                return {**select_result, "command": command, "lines": all_lines}
+
+            load_result = self._send_serial_command_locked("LOAD")
+            all_lines.extend(load_result.get("lines", []))
+
+            if not load_result["ok"]:
+                self._pause_klipper(load_result.get("error", "Falha no LOAD"))
+                return {**load_result, "command": command, "lines": all_lines}
+
+            already_loaded = any("FILAMENTO JA PRESENTE" in line.upper() for line in load_result["lines"])
+            if already_loaded:
+                print(f"T{tool} ja estava carregada; Purga ignorada.", flush=True)
+            else:
+                try:
+                    post_klipper_gcode("Purga")
+                    print(f"T{tool} carregada agora; Purga enviada ao Klipper.", flush=True)
+                except Exception as exc:
+                    return {
+                        "ok": False,
+                        "command": command,
+                        "lines": all_lines,
+                        "error": f"Falha ao chamar Purga: {exc}",
+                    }
+
+            return {
+                "ok": True,
+                "command": command,
+                "lines": all_lines,
+                "already_loaded": already_loaded,
+                "purged": not already_loaded,
+                "error": "",
+            }
+
     def monitor_idle_serial(self):
         while not self.stop_event.is_set():
             if not self.serial or not self.serial.is_open:
@@ -166,6 +251,9 @@ class ChameleonSerial:
         command = command.strip().upper()
         if not command:
             return {"ok": False, "error": "Comando vazio", "lines": []}
+
+        if command.startswith("ENSURE_LOADED "):
+            return self.ensure_loaded(command)
 
         with self.lock:
             self.open()
