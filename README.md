@@ -152,3 +152,29 @@ Grave no Raspberry Pi Pico conectado por USB.
 - Nao conecte ou desconecte motor com o driver energizado.
 - Ajuste a corrente dos TMC2209 antes de testar com filamento.
 - Se o motor so vibrar, confira pares das bobinas, corrente do driver e DIP switches.
+
+## Creditos e agradecimentos
+
+Este projeto e uma adaptacao/modificacao feita para uso na Creality K1 Max, baseada na ideia do 3D Chameleon.
+
+Agradecimentos aos projetos e comunidades que ajudaram como referencia:
+
+- 3D Chameleon original: https://www.3dchameleon.com/
+- Filamentalist Rewinder / ERCF: https://github.com/SkiBikePrint/Filamentalist
+- ERCF v2: https://github.com/Carrot-collective/ERCF_v2
+
+## Apoie o projeto
+
+Se este projeto te ajudou e voce quiser apoiar para ele crescer, qualquer contribuicao ajuda nos testes, pecas, placas e melhorias.
+
+PIX:
+
+```text
+47996781505
+```
+
+PayPal:
+
+```text
+luan.lec94@gmail.com
+```
