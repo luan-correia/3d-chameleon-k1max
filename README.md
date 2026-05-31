@@ -3,12 +3,37 @@
 Projeto de controle para um sistema tipo 3D Chameleon com:
 
 - Raspberry Pi Pico controlando motores, sensores e comunicacao com a K1/Klipper
-- ESP32 com display ST7789, encoder e menu de configuracao
+- ESP32 com display ST7789 atualizado, encoder e menu de configuracao
 - 2 drivers TMC2209 em modo standalone
 - sensores de filamento no hub, hotend, buffer e entradas T0 a T3
 - arquivos Klipper e modelos STL do conjunto mecanico
 
 Este repositorio esta organizado para documentar o hardware, os firmwares e os arquivos auxiliares usados no projeto.
+
+## Atualizacao do display
+
+A versao atual substitui o display simples antigo por um painel com **ESP32 + ST7789 320x240**.
+
+Antes, o controle visual ficava mais limitado. Agora o ESP32 faz a interface completa e conversa com o Pico por I2C. O Pico continua sendo responsavel pela logica principal dos motores e sensores.
+
+O painel novo no ESP32 inclui:
+
+- tela inicial com status das ferramentas T0 a T3
+- status de hotend, buffer, impressao e comunicacao com o Pico
+- menu por encoder
+- load, unload, home, start e stop pelo display
+- menu de configuracao
+- calibracao e reset da calibracao
+- ajuste de velocidade em porcentagem
+- alertas visuais de filamento no hotend, filamento quebrado ou sensor com defeito
+- logo `3DC CAMALEAO - VERSAO BRASIL`
+
+Com essa mudanca, o projeto fica dividido assim:
+
+```text
+Pico  -> motores, sensores, comandos da K1/Klipper e seguranca
+ESP32 -> display ST7789, encoder, menus, alertas e configuracao visual
+```
 
 ## Estrutura
 
@@ -63,6 +88,8 @@ O ESP32 cuida da interface:
 - alertas visuais
 - envio de comandos para o Pico por I2C
 
+O ESP32 nao movimenta os motores diretamente. Ele envia comandos para o Pico, e o Pico executa a acao com os sensores de seguranca.
+
 ## Logica principal
 
 - `LOAD`: carrega ate o sensor do hotend detectar filamento, depois anda mais 4 mm e enche o buffer.
@@ -102,6 +129,12 @@ pio run -t upload
 
 No projeto original, o upload estava usando `COM3`.
 
+O arquivo principal do display atualizado fica em:
+
+```text
+firmware/esp32_display/src/ESP32_3D_Chameleon_ST7789_I2C_V16_GOTA_UMIDADE.ino
+```
+
 ## Como gravar o Pico
 
 Abra o arquivo do Pico na Arduino IDE ou ambiente equivalente com suporte ao Raspberry Pi Pico:
@@ -119,4 +152,3 @@ Grave no Raspberry Pi Pico conectado por USB.
 - Nao conecte ou desconecte motor com o driver energizado.
 - Ajuste a corrente dos TMC2209 antes de testar com filamento.
 - Se o motor so vibrar, confira pares das bobinas, corrente do driver e DIP switches.
-
