@@ -169,6 +169,7 @@ Grave no Raspberry Pi Pico conectado por USB.
 | 1 | Caixa acrilica 39 x 29 x 25 cm |
 | 1 | Tomada interruptor AS-03 tripolar macho com chave gangorra |
 | 1 | Porta USB tipo C |
+| 4 | molas comprimento 8mm externo 4mm arame 1mm ou 0.7mm
 
 ## Observacoes importantes
 
