@@ -145,6 +145,31 @@ firmware/pico/Pico_3D_Chameleon_I2C_COMPLETO.ino
 
 Grave no Raspberry Pi Pico conectado por USB.
 
+## Lista de materiais
+
+| Quantidade | Item |
+|------------|------|
+| 9 | Micro switch KW10-B |
+| 1 | Raspberry Pi Pico |
+| 1 | ESP32 |
+| 1 | Encoder |
+| 1 | Fonte 12 V ou 24 V 5 A |
+| 1 | Step-down para 5 V 3 A |
+| 2 | Suporte para driver |
+| 2 | Driver TMC2209 ou A4988 |
+| 1 | Display ST7789 240x320 |
+| 4 | Parafuso M3 cabeca chata 10 mm |
+| 8 | Parafuso M3 cabeca chata 15 mm com porcas |
+| 4 | Parafuso M3 cabeca cilindrica 35 mm |
+| 20 | Parafuso M3 cabeca cilindrica 6 mm |
+| 8 | Parafuso M3 cabeca cilindrica 12 mm |
+| 4 | Conector PTFE |
+| 6 | Esfera de 4 mm |
+| 2 m | Tubo PTFE 4 mm x 2.5 mm |
+| 1 | Caixa acrilica 39 x 29 x 25 cm |
+| 1 | Tomada interruptor AS-03 tripolar macho com chave gangorra |
+| 1 | Porta USB tipo C |
+
 ## Observacoes importantes
 
 - Todos os GND precisam estar em comum: Pico, ESP32, drivers e fonte dos motores.
