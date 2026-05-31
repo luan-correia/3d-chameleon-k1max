@@ -1,0 +1,9 @@
+.pio/
+.vscode/
+*.uf2
+*.elf
+*.bin
+*.map
+*.log
+backup_*/
+

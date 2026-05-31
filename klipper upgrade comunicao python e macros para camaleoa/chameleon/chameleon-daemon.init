@@ -1,0 +1,76 @@
+#!/bin/sh
+
+### BEGIN INIT INFO
+# Provides:          chameleon-daemon
+# Required-Start:    $local_fs $network
+# Required-Stop:     $local_fs $network
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: 3D Chameleon serial daemon
+### END INIT INFO
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+DAEMON="$SCRIPT_DIR/chameleon_daemon.py"
+PYTHON=/usr/bin/python3
+PIDFILE=/var/run/chameleon-daemon.pid
+LOGFILE=/tmp/chameleon-daemon.log
+
+export CHAMELEON_SERIAL_PORT=${CHAMELEON_SERIAL_PORT:-/dev/ttyACM0}
+export CHAMELEON_BAUD_RATE=${CHAMELEON_BAUD_RATE:-115200}
+export CHAMELEON_DAEMON_HOST=${CHAMELEON_DAEMON_HOST:-127.0.0.1}
+export CHAMELEON_DAEMON_PORT=${CHAMELEON_DAEMON_PORT:-8765}
+
+start() {
+    if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+        echo "chameleon-daemon ja esta rodando"
+        return 0
+    fi
+
+    echo "Iniciando chameleon-daemon..."
+    nohup "$PYTHON" "$DAEMON" >> "$LOGFILE" 2>&1 &
+    echo $! > "$PIDFILE"
+}
+
+stop() {
+    if [ -f "$PIDFILE" ]; then
+        PID="$(cat "$PIDFILE")"
+        echo "Parando chameleon-daemon..."
+        kill "$PID" 2>/dev/null
+        rm -f "$PIDFILE"
+    else
+        echo "chameleon-daemon nao esta rodando"
+    fi
+}
+
+status() {
+    if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+        echo "chameleon-daemon rodando PID $(cat "$PIDFILE")"
+        return 0
+    fi
+
+    echo "chameleon-daemon parado"
+    return 1
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        stop
+        sleep 1
+        start
+        ;;
+    status)
+        status
+        ;;
+    *)
+        echo "Uso: $0 {start|stop|restart|status}"
+        exit 1
+        ;;
+esac
+
+exit $?
