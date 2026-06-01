@@ -17,7 +17,7 @@ import urllib.request
 import serial
 
 
-VERSION = "2026-05-31-ensure-loaded-purge"
+VERSION = "2026-05-31-initial-purge-170"
 SERIAL_PORT = os.environ.get("CHAMELEON_SERIAL_PORT", "/dev/ttyACM0")
 BAUD_RATE = int(os.environ.get("CHAMELEON_BAUD_RATE", "115200"))
 SERIAL_TIMEOUT = float(os.environ.get("CHAMELEON_SERIAL_TIMEOUT", "0.2"))
@@ -176,10 +176,10 @@ class ChameleonSerial:
             "error": f"TIMEOUT apos {COMMAND_TIMEOUT}s",
         }
 
-    def ensure_loaded(self, command):
+    def ensure_loaded(self, command, purge_macro="Purga", usage="ENSURE_LOADED <tool>"):
         parts = command.split()
         if len(parts) < 2 or not parts[1].isdigit():
-            return {"ok": False, "command": command, "lines": [], "error": "Uso: ENSURE_LOADED <tool>"}
+            return {"ok": False, "command": command, "lines": [], "error": f"Uso: {usage}"}
 
         tool = int(parts[1])
         if tool < 0 or tool > 3:
@@ -202,17 +202,17 @@ class ChameleonSerial:
 
             already_loaded = any("FILAMENTO JA PRESENTE" in line.upper() for line in load_result["lines"])
             if already_loaded:
-                print(f"T{tool} ja estava carregada; Purga ignorada.", flush=True)
+                print(f"T{tool} ja estava carregada; {purge_macro} ignorada.", flush=True)
             else:
                 try:
-                    post_klipper_gcode("Purga")
-                    print(f"T{tool} carregada agora; Purga enviada ao Klipper.", flush=True)
+                    post_klipper_gcode(purge_macro)
+                    print(f"T{tool} carregada agora; {purge_macro} enviada ao Klipper.", flush=True)
                 except Exception as exc:
                     return {
                         "ok": False,
                         "command": command,
                         "lines": all_lines,
-                        "error": f"Falha ao chamar Purga: {exc}",
+                        "error": f"Falha ao chamar {purge_macro}: {exc}",
                     }
 
             return {
@@ -251,6 +251,13 @@ class ChameleonSerial:
         command = command.strip().upper()
         if not command:
             return {"ok": False, "error": "Comando vazio", "lines": []}
+
+        if command.startswith("ENSURE_LOADED_INITIAL "):
+            return self.ensure_loaded(
+                command,
+                purge_macro="Purga_Inicial",
+                usage="ENSURE_LOADED_INITIAL <tool>",
+            )
 
         if command.startswith("ENSURE_LOADED "):
             return self.ensure_loaded(command)
