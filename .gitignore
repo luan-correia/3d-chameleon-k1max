@@ -1,9 +1,10 @@
 .pio/
 .vscode/
+__pycache__/
+*.pyc
 *.uf2
 *.elf
 *.bin
 *.map
 *.log
 backup_*/
-

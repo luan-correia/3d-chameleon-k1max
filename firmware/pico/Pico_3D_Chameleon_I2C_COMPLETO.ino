@@ -1224,7 +1224,9 @@ void loadManual(int tool) {
 
   int inicio = verificarInicioLoad(tool);
   if (inicio == LOAD_JA_CARREGADO) {
+    salvarToolCarregada(tool);
     Serial.println("Load OK: filamento ja presente");
+    imprimindo = true;
     return;
   }
   if (inicio == LOAD_BLOQUEADO) {
@@ -1268,7 +1270,9 @@ void loadContinuo(int tool) {
 
   int inicio = verificarInicioLoad(tool);
   if (inicio == LOAD_JA_CARREGADO) {
+    salvarToolCarregada(tool);
     Serial.println("Load OK: filamento ja presente");
+    imprimindo = true;
     return;
   }
   if (inicio == LOAD_BLOQUEADO) {
@@ -1408,7 +1412,9 @@ void loadAteSensorHotend(int tool, float extraMM) {
 
   int inicio = verificarInicioLoad(tool);
   if (inicio == LOAD_JA_CARREGADO) {
+    salvarToolCarregada(tool);
     Serial.println("Load OK: filamento ja presente");
+    imprimindo = true;
     return;
   }
   if (inicio == LOAD_BLOQUEADO) {

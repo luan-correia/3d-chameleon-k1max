@@ -44,7 +44,6 @@ firmware/
     src/ESP32_3D_Chameleon_ST7789_I2C_V16_GOTA_UMIDADE.ino
   pico/
     Pico_3D_Chameleon_I2C_COMPLETO.ino
-    Pico_3D_Chameleon_I2C_ST7789_LOGICA_BOA.ino
 
 docs/
   pinout.md
@@ -169,8 +168,9 @@ Grave no Raspberry Pi Pico conectado por USB.
 | 1 | Caixa acrilica 39 x 29 x 25 cm |
 | 1 | Tomada interruptor AS-03 tripolar macho com chave gangorra |
 | 1 | Porta USB tipo C |
-| 4 | molas comprimento 8mm externo 4mm arame 1mm ou 0.7mm
-| 50 |  bucha inserto metalico m3 4mm
+| 4 | Molas: 8 mm de comprimento, 4 mm externo, arame de 1 mm ou 0.7 mm |
+| 50 | Bucha de inserto metalico M3 x 4 mm |
+
 ## Observacoes importantes
 
 - Todos os GND precisam estar em comum: Pico, ESP32, drivers e fonte dos motores.

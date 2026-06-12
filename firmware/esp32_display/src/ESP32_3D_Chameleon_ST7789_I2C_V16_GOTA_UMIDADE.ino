@@ -138,8 +138,10 @@ struct ChameleonState {
   int   toolAtiva    = 0;
   bool  filamento[4] = { false, false, false, false };
   bool  bufferCheio  = false;
+  bool  hub          = false;
   bool  hotend       = false;
   bool  imprimindo   = false;
+  bool  unloadError  = false;
   float temperatura  = 0;
   float umidade      = 0;
   bool  picoOK       = false;
@@ -155,6 +157,7 @@ bool toolLoaded[4]     = { false, false, false, false };
 bool prevToolLoaded[4] = { false, false, false, false };
 
 bool homeDrawn = false;
+bool unloadErrorShown = false;
 
 // ═══════════════════════════════════════
 // NAVEGACAO
@@ -302,8 +305,10 @@ bool picoReadStatus() {
   }
 
   state.bufferCheio = rxBuf[4] & 0x01;
+  state.hub         = rxBuf[4] & 0x02;
   state.hotend      = rxBuf[5] & 0x01;
   state.imprimindo  = (sta == STA_PRINTING) || (flags & 0x01);
+  state.unloadError = flags & 0x04;
 
   cfg.calibrado = flags & 0x02;
   cfg.distMax   = (float)((uint16_t)rxBuf[7]  | ((uint16_t)rxBuf[8]  << 8));
@@ -476,6 +481,7 @@ void updateHomePartial() {
   }
 
   if (state.hotend      != prevState.hotend)      drawCardHotend();
+  if (state.hub         != prevState.hub)         drawCardHub();
   if (state.bufferCheio != prevState.bufferCheio) drawCardBuffer();
   if (state.imprimindo  != prevState.imprimindo)  drawCardPrint();
 
@@ -539,6 +545,15 @@ void loop() {
     // Poll Pico em ritmo mais calmo para reduzir piscadas no display.
     if (millis() - lastRefresh > 1000) {
       picoPollStatus();
+      if (state.unloadError && !unloadErrorShown) {
+        unloadErrorShown = true;
+        drawLoadAlert();
+        delay(3000);
+        drawHomeFull();
+        copyStateToPrev();
+      } else if (!state.unloadError) {
+        unloadErrorShown = false;
+      }
       updateHomePartial();
       lastRefresh = millis();
     }
@@ -823,7 +838,7 @@ void executeToolAction(uint8_t cmd, const char* label) {
   if (cmd == CMD_LOAD) {
     picoPollStatus();
     if (state.picoOK && state.hotend) {
-      if (state.bufferCheio) {
+      if (state.hub) {
         drawHotendLoadedAlert();
         delay(2400);
         drawToolActionMenu();
@@ -839,6 +854,15 @@ void executeToolAction(uint8_t cmd, const char* label) {
 
   drawFeedback(label, 0);
   bool ok = picoSendCommand(cmd);
+
+  if (!ok && cmd == CMD_UNLOAD && state.unloadError) {
+    unloadErrorShown = true;
+    drawLoadAlert();
+    delay(3000);
+    currentScreen = SCR_TOOL_ACTION;
+    drawToolActionMenu();
+    return;
+  }
 
   if (ok) {
     if (cmd == CMD_LOAD) {
@@ -865,7 +889,7 @@ void executeMenu(int idx) {
   if (cmd == CMD_LOAD) {
     picoPollStatus();
     if (state.picoOK && state.hotend) {
-      if (state.bufferCheio) {
+      if (state.hub) {
         drawHotendLoadedAlert();
         delay(2400);
         currentScreen = SCR_MENU;
@@ -884,6 +908,15 @@ void executeMenu(int idx) {
 
   drawFeedback(menuLabels[idx], 0);          // enviando
   bool ok = picoSendCommand(cmd);
+
+  if (!ok && cmd == CMD_UNLOAD && state.unloadError) {
+    unloadErrorShown = true;
+    drawLoadAlert();
+    delay(3000);
+    currentScreen = SCR_MENU;
+    drawMenu();
+    return;
+  }
 
   if (ok) {
     // Atualiza estado local imediatamente para a tela responder rapido.
@@ -948,6 +981,7 @@ void drawHomeFull() {
   tft.drawFastHLine(20, 135, 280, C_DARK);
   drawTempUmidade();
   drawCardHotend();
+  drawCardHub();
   drawCardBuffer();
   drawCardPrint();
   homeDrawn = true;
@@ -1082,45 +1116,56 @@ void drawTempUmidade() {
 // ═══════════════════════════════════════
 
 void drawCardHotend() {
-  int x = 10, y = 190, w = 92, h = 42;
+  int x = 8, y = 190, w = 74, h = 42;
   tft.fillRoundRect(x, y, w, h, 8, C_BG);
   tft.drawRoundRect(x, y, w, h, 8, C_DARK);
   tft.setTextColor(C_WHITE);
   tft.setTextSize(1);
-  tft.setCursor(26, 198);
+  tft.setCursor(x + 18, y + 8);
   tft.print("HOTEND");
-  tft.setTextSize(2);
+  tft.setTextSize(1);
   tft.setTextColor(state.hotend ? C_CYAN : C_RED);
-  tft.setCursor(18, 212);
-  tft.print(state.hotend ? "READY" : "OFF  ");
+  tft.setCursor(x + 29, y + 25);
+  tft.print(state.hotend ? "ON" : "OFF");
+}
+
+void drawCardHub() {
+  int x = 86, y = 190, w = 74, h = 42;
+  tft.fillRoundRect(x, y, w, h, 8, C_BG);
+  tft.drawRoundRect(x, y, w, h, 8, C_DARK);
+  tft.setTextColor(C_WHITE);
+  tft.setTextSize(1);
+  tft.setCursor(x + 26, y + 8);
+  tft.print("HUB");
+  tft.setTextColor(state.hub ? C_CYAN : C_GRAY);
+  tft.setCursor(x + 29, y + 25);
+  tft.print(state.hub ? "ON" : "OFF");
 }
 
 void drawCardBuffer() {
-  int x = 114, y = 190, w = 92, h = 42;
+  int x = 164, y = 190, w = 74, h = 42;
   tft.fillRoundRect(x, y, w, h, 8, C_BG);
   tft.drawRoundRect(x, y, w, h, 8, C_DARK);
   tft.setTextColor(C_WHITE);
   tft.setTextSize(1);
-  tft.setCursor(132, 198);
+  tft.setCursor(x + 16, y + 8);
   tft.print("BUFFER");
-  tft.setTextSize(2);
   tft.setTextColor(state.bufferCheio ? C_CYAN : C_ORANGE);
-  tft.setCursor(128, 212);
-  tft.print(state.bufferCheio ? "FULL" : "LOW ");
+  tft.setCursor(x + 16, y + 25);
+  tft.print(state.bufferCheio ? "CHEIO" : "VAZIO");
 }
 
 void drawCardPrint() {
-  int x = 218, y = 190, w = 92, h = 42;
+  int x = 242, y = 190, w = 74, h = 42;
   tft.fillRoundRect(x, y, w, h, 8, C_BG);
   tft.drawRoundRect(x, y, w, h, 8, C_DARK);
   tft.setTextColor(C_WHITE);
   tft.setTextSize(1);
-  tft.setCursor(245, 198);
+  tft.setCursor(x + 22, y + 8);
   tft.print("PRINT");
-  tft.setTextSize(2);
   tft.setTextColor(state.imprimindo ? C_CYAN : C_GRAY);
-  tft.setCursor(230, 212);
-  tft.print(state.imprimindo ? "RUN " : "STOP");
+  tft.setCursor(x + 29, y + 25);
+  tft.print(state.imprimindo ? "ON" : "OFF");
 }
 
 // ═══════════════════════════════════════

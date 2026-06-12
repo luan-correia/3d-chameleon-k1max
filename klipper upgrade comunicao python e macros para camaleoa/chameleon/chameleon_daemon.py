@@ -17,7 +17,7 @@ import urllib.request
 import serial
 
 
-VERSION = "2026-05-31-initial-purge-170"
+VERSION = "2026-06-11-home-retry"
 SERIAL_PORT = os.environ.get("CHAMELEON_SERIAL_PORT", "/dev/ttyACM0")
 BAUD_RATE = int(os.environ.get("CHAMELEON_BAUD_RATE", "115200"))
 SERIAL_TIMEOUT = float(os.environ.get("CHAMELEON_SERIAL_TIMEOUT", "0.2"))
@@ -60,9 +60,19 @@ def done_keywords_for(command):
     if command.startswith("UNLOAD_RETRACAO "):
         return ["UNLOAD RETRACAO OK", "ERRO"]
     if command == "LOAD":
-        return ["BUFFER CHEIO:", "BUFFER JA CHEIO.", "ERRO"]
+        return [
+            "LOAD OK: FILAMENTO JA PRESENTE",
+            "BUFFER CHEIO:",
+            "BUFFER JA CHEIO.",
+            "ERRO",
+        ]
     if command == "LOAD_MANUAL":
-        return ["BUFFER CHEIO:", "BUFFER JA CHEIO.", "ERRO"]
+        return [
+            "LOAD OK: FILAMENTO JA PRESENTE",
+            "BUFFER CHEIO:",
+            "BUFFER JA CHEIO.",
+            "ERRO",
+        ]
     if command.startswith("LOAD "):
         return ["LOAD OK", "ERRO"]
     if command == "START_PRINT":
@@ -86,7 +96,12 @@ def post_klipper_gcode(script):
 
 
 def should_pause_on_failure(command):
-    return command == "LOAD" or command == "LOAD_MANUAL" or command.startswith("LOAD ")
+    return (
+        command == "LOAD"
+        or command == "LOAD_MANUAL"
+        or command.startswith("LOAD ")
+        or command == "UNLOAD"
+    )
 
 
 class ChameleonSerial:
@@ -94,6 +109,7 @@ class ChameleonSerial:
         self.serial = None
         self.lock = threading.Lock()
         self.stop_event = threading.Event()
+        self.runout_sent = False
 
     def open(self):
         if self.serial and self.serial.is_open:
@@ -125,7 +141,12 @@ class ChameleonSerial:
             print(f"RUNOUT ignorado, tool invalida: {line}", flush=True)
             return
 
+        if self.runout_sent:
+            print(f"RUNOUT T{tool} ignorado: pause ja enviado.", flush=True)
+            return
+
         try:
+            self.runout_sent = True
             post_klipper_gcode(f"CHAMELEON_RUNOUT TOOL={tool}")
             print(f"RUNOUT T{tool} enviado ao Klipper", flush=True)
         except Exception as exc:
@@ -251,6 +272,21 @@ class ChameleonSerial:
         command = command.strip().upper()
         if not command:
             return {"ok": False, "error": "Comando vazio", "lines": []}
+
+        if command == "RUNOUT_RESET":
+            self.runout_sent = False
+            print("Trava de RUNOUT resetada.", flush=True)
+            return {"ok": True, "command": command, "lines": ["RUNOUT RESET OK"], "error": ""}
+
+        if command == "HOME":
+            with self.lock:
+                first_result = self._send_serial_command_locked(command)
+                if first_result["ok"] or "COMANDO INVALIDO" not in first_result.get("error", "").upper():
+                    return first_result
+
+                print("HOME chegou invalido ao Pico; limpando serial e tentando novamente.", flush=True)
+                time.sleep(0.2)
+                return self._send_serial_command_locked(command)
 
         if command.startswith("ENSURE_LOADED_INITIAL "):
             return self.ensure_loaded(
