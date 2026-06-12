@@ -92,6 +92,7 @@ volatile uint8_t i2cLastCmd  = 0;
 volatile uint8_t i2cLastArg  = 0;
 volatile uint8_t i2cStatus   = STA_IDLE;
 bool             lastOperationOk = true;
+bool             unloadSensorError = false;
 
 // ── Sensores Entrada de Filamento (NC) ────────────────
 #define SENSOR_ENTRADA_T0   0
@@ -171,6 +172,7 @@ bool   commandReceived = false;
 #define EEPROM_SPD_RAMP_ADDR  9   // 4 bytes - velocidade load rampa (int us)
 #define EEPROM_RAMP_MM_ADDR  13   // 4 bytes - mm antes do sensor que inicia rampa
 #define EEPROM_MAGIC_ADDR    17   // 1 byte  - 0xCF = configuracao valida
+#define EEPROM_LOADED_ADDR   18   // 1 byte  - tool carregada + 1; zero = nenhuma
 
 #define EEPROM_MAGIC_VAL   0xCF
 #define EEPROM_SIZE        64
@@ -217,11 +219,67 @@ bool bufferCheio()  { return digitalRead(BUFFER_CHEIO_PIN) == HIGH; }
 bool direcaoLoad(int tool)   { return (tool < 2) ? CCW : CW;  }
 bool direcaoUnload(int tool) { return (tool < 2) ? CW  : CCW; }
 
+enum {
+  LOAD_PODE_INICIAR,
+  LOAD_JA_CARREGADO,
+  LOAD_BLOQUEADO
+};
+
+int verificarInicioLoad(int tool) {
+  int loadedTool = carregarToolCarregada();
+  bool hub = filamentoPresente(SENSOR_SAIDA);
+  bool hotend = filamentoPresente(SENSOR_HOTEND);
+
+  if (loadedTool >= 0 && loadedTool != tool) {
+    Serial.print("ERRO: LOAD T"); Serial.print(tool);
+    Serial.print(" bloqueado: T"); Serial.print(loadedTool);
+    Serial.println(" ainda esta carregado.");
+    lastOperationOk = false;
+    return LOAD_BLOQUEADO;
+  }
+
+  if (loadedTool == tool && hub && hotend) {
+    lastOperationOk = true;
+    return LOAD_JA_CARREGADO;
+  }
+
+  if (loadedTool == tool) {
+    Serial.print("ERRO: LOAD T"); Serial.print(tool);
+    Serial.println(" bloqueado: EEPROM indica carregado, mas sensores nao confirmam.");
+    lastOperationOk = false;
+    return LOAD_BLOQUEADO;
+  }
+
+  if (hub) {
+    Serial.println("ERRO: LOAD bloqueado: filamento no Hub, mas nao no Hotend.");
+    lastOperationOk = false;
+    return LOAD_BLOQUEADO;
+  }
+
+  if (hotend) {
+    Serial.println("ERRO: LOAD bloqueado: Hotend detecta filamento, mas Hub nao.");
+    lastOperationOk = false;
+    return LOAD_BLOQUEADO;
+  }
+
+  return LOAD_PODE_INICIAR;
+}
+
 void salvarTool(int tool) {
   EEPROM.write(EEPROM_TOOL_ADDR, tool + 1);
   EEPROM.commit();
 }
 int  carregarTool()       { return EEPROM.read(EEPROM_TOOL_ADDR) - 1; }
+
+void salvarToolCarregada(int tool) {
+  EEPROM.write(EEPROM_LOADED_ADDR, (tool >= 0 && tool <= 3) ? tool + 1 : 0);
+  EEPROM.commit();
+}
+
+int carregarToolCarregada() {
+  int tool = EEPROM.read(EEPROM_LOADED_ADDR) - 1;
+  return (tool >= 0 && tool <= 3) ? tool : -1;
+}
 
 float velocidadeMMS(int delayUs) {
   if (delayUs <= 0) return 0.0;
@@ -460,9 +518,11 @@ void i2cRequestEvent() {
   tx[1] = estadoAtualI2C();
   tx[2] = (uint8_t)(currentExtruder + 1);  // ESP espera 1 a 4
   tx[3] = fils;
-  tx[4] = bufferCheio() ? 1 : 0;
+  tx[4] = (bufferCheio() ? 0x01 : 0x00) | (filamentoPresente(SENSOR_SAIDA) ? 0x02 : 0x00);
   tx[5] = filamentoPresente(SENSOR_HOTEND) ? 1 : 0;
-  tx[6] = (imprimindo ? 0x01 : 0x00) | (configCalibrado ? 0x02 : 0x00);
+  tx[6] = (imprimindo ? 0x01 : 0x00) |
+          (configCalibrado ? 0x02 : 0x00) |
+          (unloadSensorError ? 0x04 : 0x00);
 
   uint16_t distMaxMM = (uint16_t)constrain((int)configDistMax, 0, 65535);
   uint16_t rampMM    = (uint16_t)constrain((int)configRampMM, 0, 65535);
@@ -700,6 +760,7 @@ void loop() {
 void processarComando(String cmd) {
   cmd.trim();
   cmd.toUpperCase();
+  unloadSensorError = false;
 
   if (cmd == "T0") { selecionarTool(0); return; }
   if (cmd == "T1") { selecionarTool(1); return; }
@@ -707,7 +768,17 @@ void processarComando(String cmd) {
   if (cmd == "T3") { selecionarTool(3); return; }
 
   if (cmd == "HOME") {
+    int loadedTool = carregarToolCarregada();
     homeSelector();
+    if (loadedTool >= 0 &&
+        filamentoPresente(SENSOR_SAIDA) &&
+        filamentoPresente(SENSOR_HOTEND)) {
+      moverSeletor(0, loadedTool);
+      currentExtruder = loadedTool;
+      lastExtruder = loadedTool;
+      salvarTool(loadedTool);
+      Serial.print("HOME: voltou para T"); Serial.println(loadedTool);
+    }
     Serial.println("HOME OK");
     return;
   }
@@ -728,8 +799,24 @@ void processarComando(String cmd) {
       Serial.println("Buffer drain desativado");
     }
     imprimindo = false;
-    if (currentExtruder < 0) { Serial.println("ERRO: Selecione tool primeiro"); return; }
-    unloadAteSensor(currentExtruder);
+    int loadedTool = carregarToolCarregada();
+    if (loadedTool < 0 && filamentoPresente(SENSOR_SAIDA)) {
+      loadedTool = currentExtruder;
+      Serial.print("UNLOAD: usando ferramenta atual pelo sensor do Hub: T");
+      Serial.println(loadedTool);
+    }
+    if (loadedTool < 0) {
+      lastOperationOk = false;
+      Serial.println("ERRO: UNLOAD bloqueado: nenhuma ferramenta carregada na EEPROM.");
+      return;
+    }
+    if (currentExtruder != loadedTool) {
+      moverSeletor(currentExtruder, loadedTool);
+      currentExtruder = loadedTool;
+      lastExtruder = loadedTool;
+      salvarTool(loadedTool);
+    }
+    unloadAteSensor(loadedTool);
     return;
   }
 
@@ -873,6 +960,13 @@ void printStatus() {
 
 void selecionarTool(int tool) {
   Serial.print("Selecionando T"); Serial.println(tool);
+
+  if (tool == currentExtruder) {
+    lastOperationOk = true;
+    Serial.print("T"); Serial.print(tool); Serial.println(" OK");
+    return;
+  }
+
   moverSeletor(currentExtruder, tool);
   currentExtruder = tool;
   lastExtruder    = tool;
@@ -1027,7 +1121,24 @@ void executarBufferDrain() {
           digitalWrite(EXT_EN, HIGH);
           bufferDrainMode = false;
           Serial.println("Buffer drain desativado");
-          if (currentExtruder >= 0) unloadAteSensor(currentExtruder);
+          int loadedTool = carregarToolCarregada();
+          if (loadedTool < 0 && filamentoPresente(SENSOR_SAIDA)) {
+            loadedTool = currentExtruder;
+            Serial.print("UNLOAD: usando ferramenta atual pelo sensor do Hub: T");
+            Serial.println(loadedTool);
+          }
+          if (loadedTool >= 0) {
+            if (currentExtruder != loadedTool) {
+              moverSeletor(currentExtruder, loadedTool);
+              currentExtruder = loadedTool;
+              lastExtruder = loadedTool;
+              salvarTool(loadedTool);
+            }
+            unloadAteSensor(loadedTool);
+          } else {
+            lastOperationOk = false;
+            Serial.println("ERRO: UNLOAD bloqueado: nenhuma ferramenta carregada na EEPROM.");
+          }
           return;
         }
       }
@@ -1052,7 +1163,7 @@ void unloadAteSensor(int tool) {
   digitalWrite(EXT_DIR, direcaoUnload(tool));
 
   long steps    = 0;
-  long maxSteps = distanciaLimiteLoadSteps();
+  long maxSteps = (long)(configDistMax * STEPS_PER_MM);
   bool ok       = false;
 
   while (steps < maxSteps) {
@@ -1063,7 +1174,10 @@ void unloadAteSensor(int tool) {
 
   if (!ok) {
     digitalWrite(EXT_EN, HIGH);
-    Serial.println("ERRO: Sensor saida nao detectou filamento saindo!");
+    lastOperationOk = false;
+    unloadSensorError = true;
+    i2cStatus = STA_ERROR;
+    Serial.println("ERRO UNLOAD: filamento quebrou ou sensor do Hub com defeito.");
     return;
   }
 
@@ -1075,6 +1189,8 @@ void unloadAteSensor(int tool) {
   for (long i = 0; i < extraSteps; i++) extStep(configSpdFast);
 
   digitalWrite(EXT_EN, HIGH);
+  unloadSensorError = false;
+  salvarToolCarregada(-1);
   Serial.print("Unload OK: ");
   Serial.print((float)(steps + extraSteps) / STEPS_PER_MM);
   Serial.println("mm");
@@ -1106,10 +1222,12 @@ void unloadRetracao(int tool, float mm) {
 void loadManual(int tool) {
   Serial.print("Load manual T"); Serial.println(tool);
 
-  if (filamentoPresente(SENSOR_HOTEND)) {
+  int inicio = verificarInicioLoad(tool);
+  if (inicio == LOAD_JA_CARREGADO) {
     Serial.println("Load OK: filamento ja presente");
-    imprimindo = true;
-    encherBuffer(tool);
+    return;
+  }
+  if (inicio == LOAD_BLOQUEADO) {
     return;
   }
 
@@ -1132,6 +1250,7 @@ void loadManual(int tool) {
     Serial.print("Load OK: ");
     Serial.print((float)(steps + extra4mm) / STEPS_PER_MM);
     Serial.println("mm");
+    salvarToolCarregada(tool);
     imprimindo = true;
     encherBuffer(tool);
   } else {
@@ -1147,10 +1266,12 @@ void loadManual(int tool) {
 void loadContinuo(int tool) {
   Serial.print("Load auto T"); Serial.println(tool);
 
-  if (filamentoPresente(SENSOR_HOTEND)) {
+  int inicio = verificarInicioLoad(tool);
+  if (inicio == LOAD_JA_CARREGADO) {
     Serial.println("Load OK: filamento ja presente");
-    imprimindo = true;
-    encherBuffer(tool);
+    return;
+  }
+  if (inicio == LOAD_BLOQUEADO) {
     return;
   }
 
@@ -1173,6 +1294,7 @@ void loadContinuo(int tool) {
     Serial.print("Load OK: ");
     Serial.print((float)(steps + extra4mm) / STEPS_PER_MM);
     Serial.println("mm");
+    salvarToolCarregada(tool);
     imprimindo = true;
     encherBuffer(tool);
   } else {
@@ -1227,7 +1349,6 @@ void executarPreLoad(int tool) {
     moverSeletor(currentExtruder, tool);
     currentExtruder = tool;
     lastExtruder = tool;
-    salvarTool(tool);
   }
 
   i2cStatus = STA_BUSY;
@@ -1285,6 +1406,15 @@ void loadAteSensorHotend(int tool, float extraMM) {
   Serial.print("Load T"); Serial.print(tool);
   Serial.print(" extra: "); Serial.print(extraMM); Serial.println("mm");
 
+  int inicio = verificarInicioLoad(tool);
+  if (inicio == LOAD_JA_CARREGADO) {
+    Serial.println("Load OK: filamento ja presente");
+    return;
+  }
+  if (inicio == LOAD_BLOQUEADO) {
+    return;
+  }
+
   digitalWrite(EXT_EN, LOW);
   digitalWrite(EXT_DIR, direcaoLoad(tool));
 
@@ -1315,6 +1445,7 @@ void loadAteSensorHotend(int tool, float extraMM) {
   }
 
   digitalWrite(EXT_EN, HIGH);
+  salvarToolCarregada(tool);
   Serial.println("Load OK");
 }
 
