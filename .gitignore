@@ -8,3 +8,4 @@ __pycache__/
 *.map
 *.log
 backup_*/
+node_modules/

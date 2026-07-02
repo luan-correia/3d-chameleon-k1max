@@ -1,0 +1,13 @@
+[Unit]
+Description=3D Chameleon serial daemon
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/chameleon-daemon
+ExecStart=/opt/chameleon/venv/bin/python /opt/chameleon/chameleon_daemon.py
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

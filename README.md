@@ -10,6 +10,28 @@ Projeto de controle para um sistema tipo 3D Chameleon com:
 
 Este repositorio esta organizado para documentar o hardware, os firmwares e os arquivos auxiliares usados no projeto.
 
+## Instalacao automatica no Klipper
+
+O instalador configura o daemon serial, as macros e o painel dedicado **Camaleao** no Mainsail. Ele detecta automaticamente Creality K1/Buildroot e instalacoes Linux comuns do Klipper.
+
+```bash
+git clone https://github.com/luan-correia/3d-chameleon-k1max.git
+cd 3d-chameleon-k1max
+sudo ./installer/install.sh
+```
+
+Depois da instalacao, reinicie o Klipper e atualize o navegador com `Ctrl+F5`. O instalador sempre cria backup antes de alterar arquivos.
+
+Comandos de manutencao:
+
+```bash
+sudo ./installer/update.sh
+sudo ./installer/diagnose.sh
+sudo ./installer/uninstall.sh
+```
+
+Consulte [docs/instalador.md](docs/instalador.md) para requisitos, variaveis e recuperacao.
+
 ## Atualizacao do display
 
 A versao atual substitui o display simples antigo por um painel com **ESP32 + ST7789 320x240**.
@@ -58,6 +80,9 @@ rebobinador/
 
 klipper upgrade comunicao python e macros para camaleoa/
   macros Klipper e daemon Python
+
+installer/
+  instalacao, atualizacao, diagnostico e desinstalacao
 ```
 
 ## Estado atual do firmware

@@ -1,0 +1,341 @@
+diff --git a/src/components/mixins/dashboard.ts b/src/components/mixins/dashboard.ts
+index 7da3685..40789d0 100644
+--- a/src/components/mixins/dashboard.ts
++++ b/src/components/mixins/dashboard.ts
+@@ -30,6 +30,7 @@ export default class DashboardMixin extends BaseMixin {
+     }
+
+     getPanelName(name: string) {
++        if (name === 'chameleon') return 'Camaleao'
+         if (name.startsWith('macrogroup_')) {
+             const groupId = name.split('_')[1] ?? ''
+             const group = this.macrogroups.find((group: GuiMacrosStateMacrogroup) => group.id === groupId)
+@@ -79,6 +80,8 @@ export default class DashboardMixin extends BaseMixin {
+                 return mdiMulticast
+             case 'afc':
+                 return afcIconLogo
++            case 'chameleon':
++                return mdiMulticast
+
+             default:
+                 return mdiInformation
+diff --git a/src/pages/Dashboard.vue b/src/pages/Dashboard.vue
+index 7327676..b722644 100644
+--- a/src/pages/Dashboard.vue
++++ b/src/pages/Dashboard.vue
+@@ -83,6 +83,7 @@
+ import Component from 'vue-class-component'
+ import { Mixins } from 'vue-property-decorator'
+ import AfcPanel from '@/components/panels/AfcPanel.vue'
++import ChameleonPanel from '@/components/panels/ChameleonPanel.vue'
+ import ExtruderControlPanel from '@/components/panels/ExtruderControlPanel.vue'
+ import DashboardMixin from '@/components/mixins/dashboard'
+ import KlippyStatePanel from '@/components/panels/KlippyStatePanel.vue'
+@@ -103,6 +104,7 @@ import WebcamPanel from '@/components/panels/WebcamPanel.vue'
+ @Component({
+     components: {
+         AfcPanel,
++        ChameleonPanel,
+         ExtruderControlPanel,
+         KlippyStatePanel,
+         LedEffectsPanel,
+diff --git a/src/store/variables.ts b/src/store/variables.ts
+index 0017935..86baa94 100644
+--- a/src/store/variables.ts
++++ b/src/store/variables.ts
+@@ -99,6 +99,7 @@ export const maxGcodeHistory = 50
+  */
+ export const allDashboardPanels = [
+     'afc',
++    'chameleon',
+     'toolhead-control',
+     'extruder-control',
+     'macros',
+diff --git a/src/components/panels/ChameleonPanel.vue b/src/components/panels/ChameleonPanel.vue
+new file mode 100644
+index 0000000..7d4e90a
+--- /dev/null
++++ b/src/components/panels/ChameleonPanel.vue
+@@ -0,0 +1,282 @@
++<template>
++    <panel :icon="mdiMulticast" title="Camaleao" :collapsible="true" card-class="chameleon-panel">
++        <template #buttons>
++            <v-btn icon tile :loading="loading" title="Atualizar" @click="refreshStatus">
++                <v-icon>{{ mdiRefresh }}</v-icon>
++            </v-btn>
++        </template>
++
++        <v-card-text class="pa-3 notranslate" translate="no">
++            <div class="d-flex align-center mb-3">
++                <span class="status-dot mr-2" :class="online ? 'online' : 'offline'" />
++                <strong>{{ online ? 'COMUNICACAO ONLINE' : 'COMUNICACAO OFFLINE' }}</strong>
++                <v-spacer />
++                <strong :class="loadedTool >= 0 || hotend ? 'success--text' : 'text--secondary'">
++                    {{ stateText }}
++                </strong>
++            </div>
++
++            <div class="text-caption text--secondary mb-1">MOVER SELETOR</div>
++            <div class="tools mb-3">
++                <v-btn
++                    v-for="tool in 4"
++                    :key="tool - 1"
++                    small
++                    :outlined="activeTool !== tool - 1 && loadedTool !== tool - 1"
++                    :color="loadedTool === tool - 1 ? 'success' : activeTool === tool - 1 ? 'primary' : undefined"
++                    :disabled="loading"
++                    @click="runCommand(`T${tool - 1}`)">
++                    <span>T{{ tool - 1 }}</span>
++                    <small v-if="loadedTool === tool - 1" class="tool-state">ATIVO</small>
++                    <small v-else-if="activeTool === tool - 1" class="tool-state">SELETOR</small>
++                </v-btn>
++            </div>
++
++            <div class="gate-status mb-3">
++                <v-chip
++                    v-for="(present, index) in toolSensors"
++                    :key="`sensor-t${index}`"
++                    x-small
++                    :color="present ? 'success' : undefined"
++                    :outlined="!present">
++                    T{{ index }} {{ loadedTool === index ? 'ATIVO' : present ? 'DISPONIVEL' : 'VAZIO' }}
++                </v-chip>
++            </div>
++
++            <v-row dense class="sensors mb-2">
++                <v-col v-for="sensor in sensors" :key="sensor.label" cols="6" sm="3">
++                    <div class="sensor">
++                        <span>{{ sensor.label }}</span>
++                        <strong :class="sensor.on ? 'success--text' : 'text--secondary'">
++                            {{ sensor.value }}
++                        </strong>
++                    </div>
++                </v-col>
++            </v-row>
++
++            <v-alert v-if="error" dense outlined type="error" class="mb-3">{{ error }}</v-alert>
++
++            <div class="actions">
++                <v-btn small color="success" :disabled="loading" @click="runCommand('LOAD')">Carregar</v-btn>
++                <v-btn small color="warning" :disabled="loading" @click="runCommand('UNLOAD')">DESCARREGAR</v-btn>
++                <v-btn small :disabled="loading" @click="runCommand('HOME')">HOME</v-btn>
++                <v-btn small :disabled="loading" @click="runCommand('START_PRINT')">Iniciar</v-btn>
++                <v-btn small :disabled="loading" @click="runCommand('STOP_PRINT')">Parar</v-btn>
++            </div>
++        </v-card-text>
++    </panel>
++</template>
++
++<script lang="ts">
++import Component from 'vue-class-component'
++import Vue from 'vue'
++import Panel from '@/components/ui/Panel.vue'
++import { mdiMulticast, mdiRefresh } from '@mdi/js'
++
++interface SensorView {
++    label: string
++    value: string
++    on: boolean
++}
++
++@Component({ components: { Panel } })
++export default class ChameleonPanel extends Vue {
++    mdiMulticast = mdiMulticast
++    mdiRefresh = mdiRefresh
++    loading = false
++    refreshing = false
++    online = false
++    activeTool = -1
++    loadedTool = -1
++    hotend = false
++    printing = false
++    failureCount = 0
++    error = ''
++    timer: number | null = null
++    toolSensors = [false, false, false, false]
++    sensors: SensorView[] = [
++        { label: 'Sensor Hub', value: 'OFF', on: false },
++        { label: 'Hotend', value: 'OFF', on: false },
++        { label: 'Buffer', value: 'OFF', on: false },
++        { label: 'Impressao', value: 'OFF', on: false },
++    ]
++
++    get stateText() {
++        if (!this.online) return 'Offline'
++        if (this.loadedTool >= 0) return `FILAMENTO T${this.loadedTool} ATIVO`
++        if (this.hotend) return 'FILAMENTO ATIVO'
++        return 'SEM FILAMENTO'
++    }
++
++    mounted() {
++        const storedTool = Number(window.localStorage.getItem('chameleonLoadedTool'))
++        if (storedTool >= 0 && storedTool <= 3) this.loadedTool = storedTool
++        this.refreshStatus()
++        this.timer = window.setInterval(() => this.refreshStatus(), 3000)
++    }
++
++    beforeDestroy() {
++        if (this.timer !== null) window.clearInterval(this.timer)
++    }
++
++    async request(command: string) {
++        const response = await fetch(`/chameleon/cmd?command=${encodeURIComponent(command)}`, { cache: 'no-store' })
++        const data = await response.json()
++        if (!response.ok || !data.ok) throw new Error(data.error || `Falha em ${command}`)
++        return data
++    }
++
++    async refreshStatus() {
++        if (this.loading || this.refreshing) return
++        this.refreshing = true
++        try {
++            const data = await this.request('STATUS')
++            this.online = true
++            this.failureCount = 0
++            this.error = ''
++            this.parseStatus(data.lines || [])
++        } catch (error) {
++            this.failureCount++
++            try {
++                const health = await fetch('/chameleon/health', { cache: 'no-store' })
++                if (health.ok) {
++                    this.online = true
++                    return
++                }
++            } catch (_) {
++                // A terceira falha consecutiva confirma a desconexao.
++            }
++            if (this.failureCount >= 3) {
++                this.online = false
++                this.error = error instanceof Error ? error.message : 'Falha de comunicacao'
++            }
++        } finally {
++            this.refreshing = false
++        }
++    }
++
++    async runCommand(command: string) {
++        if (this.loading) return
++        this.loading = true
++        this.error = ''
++        try {
++            const data = await this.request(command)
++            this.online = true
++            this.failureCount = 0
++            this.parseStatus(data.lines || [])
++            this.applyCommandResult(command)
++        } catch (error) {
++            this.error = error instanceof Error ? error.message : `Falha em ${command}`
++        } finally {
++            this.loading = false
++        }
++        await this.refreshStatus()
++    }
++
++    parseStatus(lines: string[]) {
++        const text = lines.join('\n')
++        const tool = text.match(/Tool ativa\s*:\s*T([0-3])/i)
++        if (tool) this.activeTool = Number(tool[1])
++        const loaded = text.match(/Filamento carregado\s*:\s*T([0-3])/i)
++        const loadedNone = /Filamento carregado\s*:\s*NENHUM/i.test(text)
++        if (loaded) this.setLoadedTool(Number(loaded[1]))
++        else if (loadedNone) this.setLoadedTool(-1)
++
++        this.printing = /Imprimindo\s*:\s*SIM/i.test(text)
++        const hotend = /Hotend\s*:\s*Filamento OK/i.test(text)
++        this.hotend = hotend
++        if (!hotend) this.setLoadedTool(-1)
++        else if (!loaded && this.loadedTool < 0 && this.activeTool >= 0) this.setLoadedTool(this.activeTool)
++        this.toolSensors = [0, 1, 2, 3].map((index) =>
++            new RegExp(`T${index} entrada\\s*:\\s*OK`, 'i').test(text)
++        )
++        const bufferEmpty = /Buffer vazio\s*:\s*SIM/i.test(text)
++        const hubMatch = text.match(/Hub\s*:\s*(OK|SIM|NAO|ON|OFF|CHEIO|VAZIO)/i)
++        const hubOn = hubMatch ? /OK|SIM|ON|CHEIO/i.test(hubMatch[1]) : hotend
++        const bufferOn = !bufferEmpty
++        const previousHub = this.sensors.find((sensor) => sensor.label === 'Sensor Hub') ?? {
++            label: 'Sensor Hub',
++            value: 'SEM DADO',
++            on: false,
++        }
++
++        this.sensors = [
++            hubMatch || hotend ? { label: 'Sensor Hub', value: hubOn ? 'OK' : 'OFF', on: hubOn } : previousHub,
++            { label: 'Hotend', value: hotend ? 'OK' : 'OFF', on: hotend },
++            {
++                label: 'Buffer',
++                value: bufferOn ? 'OK' : 'OFF',
++                on: bufferOn,
++            },
++            { label: 'Impressao', value: this.printing ? 'ATIVO' : 'OFF', on: this.printing },
++        ]
++    }
++
++    setLoadedTool(tool: number) {
++        this.loadedTool = tool >= 0 && tool <= 3 ? tool : -1
++        if (this.loadedTool >= 0) window.localStorage.setItem('chameleonLoadedTool', String(this.loadedTool))
++        else window.localStorage.removeItem('chameleonLoadedTool')
++    }
++
++    applyCommandResult(command: string) {
++        const toolMatch = command.match(/^T([0-3])$/)
++        if (toolMatch) this.activeTool = Number(toolMatch[1])
++
++        if (command === 'LOAD') {
++            this.hotend = true
++            this.printing = true
++            this.setLoadedTool(this.activeTool)
++            this.updateSensorCard('Sensor Hub', 'OK', true)
++            this.updateSensorCard('Hotend', 'OK', true)
++            this.updateSensorCard('Buffer', 'OK', true)
++            this.updateSensorCard('Impressao', 'ATIVO', true)
++        } else if (command === 'UNLOAD') {
++            this.hotend = false
++            this.printing = false
++            this.setLoadedTool(-1)
++            this.updateSensorCard('Sensor Hub', 'OFF', false)
++            this.updateSensorCard('Hotend', 'OFF', false)
++            this.updateSensorCard('Buffer', 'OFF', false)
++            this.updateSensorCard('Impressao', 'OFF', false)
++        } else if (command === 'START_PRINT') {
++            this.printing = true
++            this.updateSensorCard('Impressao', 'ATIVO', true)
++        } else if (command === 'STOP_PRINT') {
++            this.printing = false
++            this.updateSensorCard('Impressao', 'OFF', false)
++        }
++    }
++
++    updateSensorCard(label: string, value: string, on: boolean) {
++        this.sensors = this.sensors.map((sensor) => (sensor.label === label ? { label, value, on } : sensor))
++    }
++}
++</script>
++
++<style scoped>
++.status-dot {
++    width: 10px;
++    height: 10px;
++    border-radius: 50%;
++    background: #777;
++}
++.status-dot.online { background: #4caf50; }
++.status-dot.offline { background: #f44336; }
++.tools, .actions, .gate-status {
++    display: flex;
++    flex-wrap: wrap;
++    gap: 8px;
++}
++.gate-status .v-chip { flex: 1 1 60px; justify-content: center; }
++.tools .v-btn { flex: 1 1 60px; min-height: 42px; }
++.tools .v-btn ::v-deep .v-btn__content { flex-direction: column; line-height: 1.1; }
++.tool-state { font-size: 9px; margin-top: 2px; }
++.sensor {
++    display: flex;
++    justify-content: space-between;
++    gap: 8px;
++    padding: 8px;
++    border: 1px solid rgba(127, 127, 127, 0.25);
++    border-radius: 4px;
++}
++</style>

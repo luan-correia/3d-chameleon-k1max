@@ -1,0 +1,24 @@
+name: Installer checks
+
+on:
+  push:
+    paths:
+      - "installer/**"
+      - ".github/workflows/installer-check.yml"
+  pull_request:
+    paths:
+      - "installer/**"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check shell syntax
+        run: |
+          bash -n installer/install.sh
+          bash -n installer/update.sh
+          bash -n installer/diagnose.sh
+          bash -n installer/uninstall.sh
+      - name: Test nginx patcher
+        run: python3 -m unittest discover -s installer/tests -v
