@@ -47,6 +47,7 @@ O painel novo no ESP32 inclui:
 - menu de configuracao
 - calibracao e reset da calibracao
 - ajuste de velocidade em porcentagem
+- secador de filamento opcional, com controle de temperatura e umidade
 - alertas visuais de filamento no hotend, filamento quebrado ou sensor com defeito
 - logo `3DC CAMALEAO - VERSAO BRASIL`
 
@@ -113,6 +114,22 @@ O ESP32 cuida da interface:
 - envio de comandos para o Pico por I2C
 
 O ESP32 nao movimenta os motores diretamente. Ele envia comandos para o Pico, e o Pico executa a acao com os sensores de seguranca.
+
+## Aquecedor/secador opcional
+
+O aquecedor e um recurso **opcional**. O 3D Camaleao funciona normalmente sem montar o secador; ele nao e necessario para selecionar, carregar ou descarregar filamento.
+
+Quem quiser usar o recurso pode ligar ao ESP32:
+
+| Funcao | Pino do ESP32 |
+|--------|---------------|
+| Sensor de temperatura NTC | GPIO34 |
+| Controle do aquecedor | GPIO26 |
+| Controle do ventilador | GPIO14 |
+
+O menu `SECAGEM FILAMENTO` permite definir temperatura e umidade. O firmware so aciona o aquecedor quando o NTC e identificado corretamente, desliga o aquecimento ao atingir o limite configurado e mantem o ventilador ligado durante o resfriamento ate a temperatura ficar abaixo de 30 C.
+
+> **Atencao:** nao ligue o aquecedor diretamente ao ESP32. Use um modulo MOSFET adequado a tensao e corrente do aquecedor, fonte dimensionada, fusivel e protecao termica. Todos os GND devem estar em comum.
 
 ## Logica principal
 
@@ -195,6 +212,8 @@ Grave no Raspberry Pi Pico conectado por USB.
 | 1 | Porta USB tipo C |
 | 4 | Molas: 8 mm de comprimento, 4 mm externo, arame de 1 mm ou 0.7 mm |
 | 50 | Bucha de inserto metalico M3 x 4 mm |
+
+Para o secador opcional, acrescente um sensor NTC, um aquecedor, um ventilador e um modulo MOSFET compativel com a carga utilizada.
 
 ## Observacoes importantes
 
