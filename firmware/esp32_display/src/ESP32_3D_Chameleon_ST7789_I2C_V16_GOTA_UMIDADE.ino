@@ -81,6 +81,18 @@ Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 #define DHT_TYPE DHT22
 DHT dht(DHT_PIN, DHT_TYPE);
 
+// Secagem de filamento (controle local no ESP32)
+#define NTC_PIN       34
+#define HEATER_PIN    26
+#define DRYER_FAN_PIN 14
+
+const float NTC_FIXED_OHMS = 100000.0f;
+const float NTC_NOMINAL_OHMS = 100000.0f;
+const float NTC_NOMINAL_C = 25.0f;
+const float NTC_BETA = 3950.0f;
+const float DRYER_COOLDOWN_C = 30.0f;
+const float DRYER_HYSTERESIS_C = 1.0f;
+
 // ═══════════════════════════════════════
 // PREFERENCES
 // ═══════════════════════════════════════
@@ -158,6 +170,7 @@ bool prevToolLoaded[4] = { false, false, false, false };
 
 bool homeDrawn = false;
 bool unloadErrorShown = false;
+bool prevDryerActive = false;
 
 // ═══════════════════════════════════════
 // NAVEGACAO
@@ -168,8 +181,27 @@ enum Screen {
   SCR_MENU,
   SCR_TOOL_ACTION,
   SCR_COLOR_SELECT,
-  SCR_CONFIG         // submenu de configuracoes
+  SCR_CONFIG,        // submenu de configuracoes
+  SCR_DRYER
 };
+
+struct DryerState {
+  float temperature = NAN;
+  int targetTemperature = 50;
+  int targetHumidity = 20;
+  bool ntcOK = false;
+  bool active = false;
+  bool cooling = false;
+  bool heaterOn = false;
+  bool fanOn = false;
+};
+
+DryerState dryer;
+int dryerIdx = 0;
+bool dryerEditing = false;
+const int DRYER_COUNT = 4;
+unsigned long lastDryerControl = 0;
+unsigned long lastDryerDraw = 0;
 
 // Estado das configuracoes recebidas do Pico
 struct ConfigState {
@@ -199,10 +231,11 @@ int selectedToolIdx = 0;
 int colorToolIdx = 0;
 int colorPickIdx = 0;
 
-const int TOOL_ACTION_COUNT = 3;
+const int TOOL_ACTION_COUNT = 4;
 const char* toolActionLabels[TOOL_ACTION_COUNT] = {
   "EXTRUSAO",
   "RETRAIR",
+  "COR FILAMENTO",
   "< VOLTAR"
 };
 
@@ -210,13 +243,13 @@ const char* toolActionLabels[TOOL_ACTION_COUNT] = {
 // MENU
 // ═══════════════════════════════════════
 
-const int   MENU_COUNT = 15;
+const int   MENU_COUNT = 12;
 const char* menuLabels[MENU_COUNT] = {
   "< VOLTAR",
-  "TOOL T0","TOOL T1","TOOL T2","TOOL T3",
+  "FILAMENTO T0","FILAMENTO T1","FILAMENTO T2","FILAMENTO T3",
   "LOAD","UNLOAD","HOME",
   "START","STOP",
-  "COR T0","COR T1","COR T2","COR T3",
+  "SECAGEM FILAMENTO",
   "CONFIGURACAO"
 };
 const uint8_t menuCmds[MENU_COUNT] = {
@@ -224,7 +257,7 @@ const uint8_t menuCmds[MENU_COUNT] = {
   CMD_T0, CMD_T1, CMD_T2, CMD_T3,
   CMD_LOAD, CMD_UNLOAD, CMD_HOME,
   CMD_START_PRINT, CMD_STOP_PRINT,
-  0x00, 0x00, 0x00, 0x00,
+  0x00,
   0x00  // CONFIGURACAO — tratado localmente
 };
 
@@ -453,6 +486,7 @@ void readDHT() {
 
 void copyStateToPrev() {
   prevState = state;
+  prevDryerActive = dryer.active;
   for (int i = 0; i < 4; i++) {
     prevToolLoaded[i] = toolLoaded[i];
   }
@@ -476,7 +510,8 @@ void updateHomePartial() {
   // Compara inteiros para evitar pisca por variacao decimal pequena do DHT.
   if ((int)state.temperatura != (int)prevState.temperatura ||
       (int)state.umidade     != (int)prevState.umidade ||
-      state.picoOK           != prevState.picoOK) {
+      state.picoOK           != prevState.picoOK ||
+      dryer.active           != prevDryerActive) {
     drawTempUmidade();
   }
 
@@ -494,6 +529,11 @@ void updateHomePartial() {
 
 void setup() {
   Serial.begin(115200);
+
+  pinMode(HEATER_PIN, OUTPUT);
+  pinMode(DRYER_FAN_PIN, OUTPUT);
+  digitalWrite(HEATER_PIN, LOW);
+  digitalWrite(DRYER_FAN_PIN, LOW);
 
   // VSPI — display
   SPI.begin(TFT_SCLK, -1, TFT_MOSI, TFT_CS);
@@ -520,6 +560,10 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(ENC_SW),  buttonISR,  FALLING);
 
   loadColors();
+  prefs.begin("dryer", true);
+  dryer.targetTemperature = prefs.getInt("temp", 50);
+  dryer.targetHumidity = prefs.getInt("humidity", 20);
+  prefs.end();
   drawSplash();
   delay(1200);
   readDHT();
@@ -540,6 +584,21 @@ void loop() {
   handleButton();
   handleSerial();
 
+  if (millis() - lastDryerControl >= 250) {
+    controlDryer();
+    lastDryerControl = millis();
+  }
+
+  if (millis() - lastDHT > 2500) {
+    readDHT();
+    lastDHT = millis();
+  }
+
+  if (currentScreen == SCR_DRYER && millis() - lastDryerDraw >= 1000) {
+    drawDryerStatus();
+    lastDryerDraw = millis();
+  }
+
   if (currentScreen == SCR_HOME && !showingFeedback) {
 
     // Poll Pico em ritmo mais calmo para reduzir piscadas no display.
@@ -558,12 +617,6 @@ void loop() {
       lastRefresh = millis();
     }
 
-    // DHT a cada 10s. Nao desenha direto: deixa o update parcial decidir
-    // para evitar pisca desnecessario.
-    if (millis() - lastDHT > 10000) {
-      readDHT();
-      lastDHT = millis();
-    }
   }
 }
 
@@ -693,6 +746,25 @@ void handleEncoder() {
       }
       break;
 
+    case SCR_DRYER:
+      if (dryerEditing && (dryerIdx == 1 || dryerIdx == 2)) {
+        if (dryerIdx == 1) {
+          dryer.targetTemperature += delta;
+          if (dryer.targetTemperature < 30) dryer.targetTemperature = 30;
+          if (dryer.targetTemperature > 80) dryer.targetTemperature = 80;
+        } else {
+          dryer.targetHumidity += delta;
+          if (dryer.targetHumidity < 5) dryer.targetHumidity = 5;
+          if (dryer.targetHumidity > 60) dryer.targetHumidity = 60;
+        }
+      } else {
+        dryerIdx += delta;
+        if (dryerIdx < 0) dryerIdx = DRYER_COUNT - 1;
+        if (dryerIdx >= DRYER_COUNT) dryerIdx = 0;
+      }
+      drawDryer();
+      break;
+
     default:
       break;
   }
@@ -721,17 +793,11 @@ void handleButton() {
         copyStateToPrev();
       } else if (menuIdx >= 1 && menuIdx <= 4) {
         openToolAction(menuIdx - 1);
-      } else if (menuIdx >= 10 && menuIdx <= 13) {
-        colorToolIdx = menuIdx - 10;
-        colorPickIdx = 0;
-        for (int i = 0; i < COLOR_COUNT; i++) {
-          if (colorValues[i] == toolColors[colorToolIdx]) {
-            colorPickIdx = i;
-            break;
-          }
-        }
-        currentScreen = SCR_COLOR_SELECT;
-        drawColorSelect();
+      } else if (menuIdx == MENU_COUNT - 2) {
+        currentScreen = SCR_DRYER;
+        dryerIdx = 0;
+        dryerEditing = false;
+        drawDryer();
       } else if (menuIdx == MENU_COUNT - 1) {
         currentScreen = SCR_CONFIG;
         cfgIdx = 0;
@@ -748,6 +814,17 @@ void handleButton() {
         executeToolAction(CMD_LOAD, "EXTRUSAO");
       } else if (toolActionIdx == 1) {
         executeToolAction(CMD_UNLOAD, "RETRAIR");
+      } else if (toolActionIdx == 2) {
+        colorToolIdx = selectedToolIdx;
+        colorPickIdx = 0;
+        for (int i = 0; i < COLOR_COUNT; i++) {
+          if (colorValues[i] == toolColors[colorToolIdx]) {
+            colorPickIdx = i;
+            break;
+          }
+        }
+        currentScreen = SCR_COLOR_SELECT;
+        drawColorSelect();
       } else {
         currentScreen = SCR_MENU;
         drawMenu();
@@ -793,11 +870,32 @@ void handleButton() {
       }
       break;
 
+    case SCR_DRYER:
+      if (dryerIdx == 0) {
+        if (dryer.active) {
+          stopDryer();
+        } else if (dryer.ntcOK) {
+          dryer.active = true;
+          dryer.cooling = false;
+          Serial.println("Secagem iniciada.");
+        }
+        drawDryer();
+      } else if (dryerIdx == 1 || dryerIdx == 2) {
+        dryerEditing = !dryerEditing;
+        if (!dryerEditing) saveDryerSettings();
+        drawDryer();
+      } else {
+        dryerEditing = false;
+        currentScreen = SCR_MENU;
+        drawMenu();
+      }
+      break;
+
     case SCR_COLOR_SELECT:
       toolColors[colorToolIdx] = colorValues[colorPickIdx];
       saveColors();
-      currentScreen = SCR_MENU;
-      drawMenu();
+      currentScreen = SCR_TOOL_ACTION;
+      drawToolActionMenu();
       break;
   }
 }
@@ -1077,13 +1175,13 @@ void drawGotaUmidade(int x, int y, uint16_t cor) {
 }
 
 void drawTempUmidade() {
-  // Area central: temperatura + umidade + status I2C/Pico
+  // Area central: temperatura, umidade, I2C e secador
   tft.fillRect(20, 138, 280, 52, C_BG);
 
   // Temperatura
   tft.setTextSize(3);
   tft.setTextColor(C_ORANGE);
-  tft.setCursor(36, 148);
+  tft.setCursor(28, 148);
   tft.print((int)state.temperatura);
 
   int cx = tft.getCursorX();
@@ -1096,19 +1194,24 @@ void drawTempUmidade() {
   // Umidade com icone de gota no lugar do UR
   tft.setTextColor(C_CYAN);
   tft.setTextSize(3);
-  tft.setCursor(145, 148);
+  tft.setCursor(108, 148);
   tft.print((int)state.umidade);
   tft.print("%");
 
   // Gota de agua depois do percentual
-  drawGotaUmidade(222, 156, C_CYAN);
+  drawGotaUmidade(190, 156, C_CYAN);
 
-  // Status Pico/I2C no lado direito da mesma linha
-  tft.fillCircle(268, 163, 5, state.picoOK ? C_GREEN : C_RED);
+  // Status I2C em cima e secador logo abaixo, com a mesma fonte.
+  tft.fillCircle(226, 150, 4, state.picoOK ? C_GREEN : C_RED);
   tft.setTextColor(state.picoOK ? C_GREEN : C_RED);
   tft.setTextSize(1);
-  tft.setCursor(278, 159);
-  tft.print(state.picoOK ? "PICO" : "I2C?");
+  tft.setCursor(236, 146);
+  tft.print(state.picoOK ? "I2C ON" : "I2C OFF");
+
+  tft.fillCircle(226, 174, 4, dryer.active ? C_GREEN : C_GRAY);
+  tft.setTextColor(dryer.active ? C_GREEN : C_GRAY);
+  tft.setCursor(236, 170);
+  tft.print(dryer.active ? "SECADOR ON" : "SECADOR OFF");
 }
 
 // ═══════════════════════════════════════
@@ -1405,14 +1508,15 @@ void drawMenuItem(int i, int line) {
 
   tft.setTextColor(txtColor);
   tft.setTextSize(2);
-  tft.setCursor(38, y + 6);
-  tft.print(menuLabels[i]);
-
-  if (i >= 10 && i <= 13) {
-    int tool = i - 10;
-    tft.fillCircle(276, y + 14, 8, toolColors[tool]);
-    tft.drawCircle(276, y + 14, 9, sel ? C_WHITE : C_GRAY);
+  if (i >= 1 && i <= 4) {
+    int tool = i - 1;
+    tft.fillCircle(43, y + 14, 8, toolColors[tool]);
+    tft.drawCircle(43, y + 14, 9, sel ? C_WHITE : C_GRAY);
+    tft.setCursor(58, y + 6);
+  } else {
+    tft.setCursor(38, y + 6);
   }
+  tft.print(menuLabels[i]);
 }
 
 void drawMenuPartial(int oldIdx) {
@@ -1461,14 +1565,133 @@ void drawMenu() {
 // SELECAO DE COR
 // ═══════════════════════════════════════
 
+float readNTCTemperature() {
+  uint32_t total = 0;
+  for (int i = 0; i < 16; i++) total += analogRead(NTC_PIN);
+  float adc = total / 16.0f;
+  if (adc < 40.0f || adc > 4055.0f) return NAN;
+
+  // Divisor: 3.3V -> resistor 100k -> GPIO34 -> NTC -> GND.
+  float resistance = NTC_FIXED_OHMS * adc / (4095.0f - adc);
+  float invKelvin = (1.0f / (NTC_NOMINAL_C + 273.15f)) +
+                    (log(resistance / NTC_NOMINAL_OHMS) / NTC_BETA);
+  float celsius = (1.0f / invKelvin) - 273.15f;
+  if (celsius < -20.0f || celsius > 150.0f) return NAN;
+  return celsius;
+}
+
+void setDryerOutputs(bool heater, bool fan) {
+  dryer.heaterOn = heater;
+  dryer.fanOn = fan;
+  digitalWrite(HEATER_PIN, heater ? HIGH : LOW);
+  digitalWrite(DRYER_FAN_PIN, fan ? HIGH : LOW);
+}
+
+void stopDryer() {
+  dryer.active = false;
+  dryer.cooling = dryer.ntcOK && dryer.temperature >= DRYER_COOLDOWN_C;
+  setDryerOutputs(false, dryer.cooling);
+  Serial.println("Secagem parada; resfriamento ativo ate 30C.");
+}
+
+void controlDryer() {
+  dryer.temperature = readNTCTemperature();
+  dryer.ntcOK = !isnan(dryer.temperature);
+  if (!dryer.ntcOK) {
+    setDryerOutputs(false, dryer.active || dryer.cooling);
+    return;
+  }
+
+  if (dryer.active && !isnan(state.umidade) && state.umidade <= dryer.targetHumidity) {
+    dryer.active = false;
+    dryer.cooling = true;
+    Serial.println("Secagem concluida: umidade alvo atingida.");
+  }
+
+  if (dryer.active) {
+    bool heat = dryer.heaterOn;
+    if (dryer.temperature <= dryer.targetTemperature - DRYER_HYSTERESIS_C) heat = true;
+    if (dryer.temperature >= dryer.targetTemperature + DRYER_HYSTERESIS_C) heat = false;
+    setDryerOutputs(heat, true);
+  } else if (dryer.cooling) {
+    if (dryer.temperature < DRYER_COOLDOWN_C) dryer.cooling = false;
+    setDryerOutputs(false, dryer.cooling);
+  } else {
+    setDryerOutputs(false, false);
+  }
+}
+
+void saveDryerSettings() {
+  prefs.begin("dryer", false);
+  prefs.putInt("temp", dryer.targetTemperature);
+  prefs.putInt("humidity", dryer.targetHumidity);
+  prefs.end();
+}
+
+void drawDryerStatus() {
+  if (currentScreen != SCR_DRYER) return;
+  tft.fillRect(8, 38, 304, 54, C_BG);
+  tft.setTextSize(2);
+  if (!dryer.ntcOK) {
+    tft.setTextColor(C_RED);
+    tft.setCursor(16, 56);
+    tft.print("ERRO: NTC NAO CONECTADO");
+    return;
+  }
+
+  tft.setTextColor(C_WHITE);
+  tft.setCursor(16, 46);
+  tft.print("NTC "); tft.print(dryer.temperature, 1); tft.print("C");
+  tft.setCursor(174, 46);
+  tft.print("UR ");
+  if (isnan(state.umidade)) tft.print("--"); else tft.print((int)state.umidade);
+  tft.print("%");
+  tft.setTextSize(1);
+  tft.setCursor(16, 74);
+  tft.setTextColor(dryer.heaterOn ? C_ORANGE : C_GRAY);
+  tft.print(dryer.heaterOn ? "AQUECEDOR ON" : "AQUECEDOR OFF");
+  tft.setCursor(190, 74);
+  tft.setTextColor(dryer.fanOn ? C_CYAN : C_GRAY);
+  tft.print(dryer.fanOn ? "FAN ON" : "FAN OFF");
+}
+
+void drawDryer() {
+  tft.fillScreen(C_BG);
+  tft.fillRect(0, 0, 320, 36, C_DARK);
+  tft.setTextColor(C_CYAN);
+  tft.setTextSize(2);
+  tft.setCursor(10, 10);
+  tft.print("SECAGEM FILAMENTO");
+  drawDryerStatus();
+
+  const char* labels[DRYER_COUNT] = {
+    "INICIAR", "TEMPERATURA", "UMIDADE FIM", "< VOLTAR"
+  };
+  for (int i = 0; i < DRYER_COUNT; i++) {
+    int y = 98 + i * 32;
+    bool selected = i == dryerIdx;
+    uint16_t bg = selected ? (dryerEditing ? C_ORANGE : C_ACTIVE) : C_DARK;
+    tft.fillRect(10, y, 300, 27, bg);
+    tft.setTextColor(selected ? C_WHITE : C_GRAY);
+    tft.setTextSize(2);
+    tft.setCursor(22, y + 5);
+    if (i == 0) tft.print(dryer.active ? "PARAR" : labels[i]);
+    else tft.print(labels[i]);
+    tft.setCursor(248, y + 5);
+    if (i == 1) { tft.print(dryer.targetTemperature); tft.print("C"); }
+    if (i == 2) { tft.print(dryer.targetHumidity); tft.print("%"); }
+  }
+}
+
 void drawToolActionMenu() {
   tft.fillScreen(C_BG);
 
   tft.fillRect(0, 0, 320, 36, C_DARK);
   tft.setTextColor(C_CYAN);
   tft.setTextSize(2);
-  tft.setCursor(10, 10);
-  tft.print("TOOL T");
+  tft.fillCircle(20, 18, 8, toolColors[selectedToolIdx]);
+  tft.setCursor(36, 10);
+  tft.print("FILAMENTO T");
   tft.print(selectedToolIdx);
 
   tft.setTextColor(C_GRAY);
@@ -1478,8 +1701,8 @@ void drawToolActionMenu() {
   tft.print("/");
   tft.print(TOOL_ACTION_COUNT);
 
-  const int START_Y = 58;
-  const int ITEM_H = 48;
+  const int START_Y = 46;
+  const int ITEM_H = 42;
 
   for (int i = 0; i < TOOL_ACTION_COUNT; i++) {
     int y = START_Y + i * ITEM_H;
@@ -1488,15 +1711,15 @@ void drawToolActionMenu() {
     uint16_t bgColor = sel ? C_ACTIVE : C_DARK;
     uint16_t txtColor = sel ? C_WHITE : C_GRAY;
 
-    tft.fillRoundRect(12, y, 296, 40, 7, bgColor);
+    tft.fillRoundRect(12, y, 296, 36, 7, bgColor);
     if (sel) {
-      tft.drawRoundRect(12, y, 296, 40, 7, C_CYAN);
-      tft.fillTriangle(22, y + 14, 22, y + 26, 34, y + 20, C_WHITE);
+      tft.drawRoundRect(12, y, 296, 36, 7, C_CYAN);
+      tft.fillTriangle(22, y + 12, 22, y + 24, 34, y + 18, C_WHITE);
     }
 
     tft.setTextColor(txtColor);
     tft.setTextSize(2);
-    tft.setCursor(48, y + 11);
+    tft.setCursor(48, y + 9);
     tft.print(toolActionLabels[i]);
   }
 
